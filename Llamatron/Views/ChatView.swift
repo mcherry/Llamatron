@@ -62,7 +62,6 @@ struct ChatView: View {
             Divider()
             StatusBarView(session: session, isStreaming: viewModel.isStreaming)
         }
-        .navigationTitle(session.title)
         .sheet(isPresented: $showingConfig) {
             SessionConfigView(session: session, serverURL: serverURL)
         }
@@ -179,6 +178,13 @@ struct ChatView: View {
             }
             .onChange(of: visibleMessages.count) {
                 withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo(bottomAnchor, anchor: .bottom)
+                }
+            }
+            .onAppear {
+                // Jump to the latest message when the session opens. Deferred so the
+                // lazy transcript content is laid out before we scroll.
+                DispatchQueue.main.async {
                     proxy.scrollTo(bottomAnchor, anchor: .bottom)
                 }
             }
