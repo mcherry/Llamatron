@@ -7,13 +7,16 @@ struct OllamaModel: Codable, Sendable, Identifiable, Hashable {
     let name: String
     let details: Details?
     let size: Int?
+    /// Capability tags from `/api/tags`, e.g. `["completion", "vision", "tools"]`.
+    let capabilities: [String]?
 
     var id: String { name }
 
-    init(name: String, details: Details?, size: Int? = nil) {
+    init(name: String, details: Details?, size: Int? = nil, capabilities: [String]? = nil) {
         self.name = name
         self.details = details
         self.size = size
+        self.capabilities = capabilities
     }
 
     struct Details: Codable, Sendable, Hashable {
@@ -32,9 +35,15 @@ struct OllamaModel: Codable, Sendable, Identifiable, Hashable {
     /// chat picker. `/api/tags` doesn't report capabilities, so we match on the name
     /// and model family, which covers the common embedding models.
     var isEmbeddingModel: Bool {
+        if let capabilities { return capabilities.contains("embedding") }
         var haystack = [name.lowercased(), (details?.family ?? "").lowercased()]
         haystack.append(contentsOf: (details?.families ?? []).map { $0.lowercased() })
         return haystack.contains { $0.contains("embed") }
+    }
+
+    /// Whether this model can accept image input (multimodal vision).
+    var supportsVision: Bool {
+        capabilities?.contains("vision") ?? false
     }
 
     /// Human-readable on-disk size, e.g. "18.6 GB".
@@ -123,6 +132,24 @@ enum ReasoningMode: String, Codable, Sendable, CaseIterable, Identifiable {
 struct ChatTurn: Codable, Sendable {
     let role: String
     let content: String
+    /// Base64-encoded images for vision models (Ollama's `images` field). Omitted
+    /// from the wire payload when empty.
+    let images: [String]
+
+    init(role: String, content: String, images: [String] = []) {
+        self.role = role
+        self.content = content
+        self.images = images
+    }
+
+    enum CodingKeys: String, CodingKey { case role, content, images }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(role, forKey: .role)
+        try c.encode(content, forKey: .content)
+        if !images.isEmpty { try c.encode(images, forKey: .images) }
+    }
 }
 
 /// Sampling/generation parameters for a chat request. Every field is optional so

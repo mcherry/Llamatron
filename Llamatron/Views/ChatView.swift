@@ -41,6 +41,9 @@ struct ChatView: View {
             header
             Divider()
             transcript
+            if let status = viewModel.activityStatus {
+                activityBar(status)
+            }
             if let info = viewModel.contextInfo {
                 contextInfoBar(info)
             }
@@ -64,7 +67,7 @@ struct ChatView: View {
             SessionConfigView(session: session, serverURL: serverURL)
         }
         .fileImporter(isPresented: $showingImporter,
-                      allowedContentTypes: AttachmentLoader.allowedTypes,
+                      allowedContentTypes: AttachmentLoader.importTypes,
                       allowsMultipleSelection: true) { result in
             handleImport(result)
         }
@@ -72,6 +75,7 @@ struct ChatView: View {
             importURLs(urls)
             return true
         }
+        .task(id: serverURL) { await loadVisionCapabilities() }
         .confirmationDialog("Start a fresh chat?",
                             isPresented: $showingResetConfirm,
                             titleVisibility: .visible) {
@@ -242,6 +246,19 @@ struct ChatView: View {
 
     // MARK: - Context info + attachments
 
+    private func activityBar(_ status: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text(status)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.purple.opacity(0.10))
+    }
+
     private func contextInfoBar(_ info: ContextInfo) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "doc.text.magnifyingglass")
@@ -276,13 +293,22 @@ struct ChatView: View {
 
     private func attachmentChip(_ attachment: Attachment) -> some View {
         HStack(spacing: 5) {
-            Image(systemName: "doc.text")
-                .font(.caption2)
+            if attachment.isImage, let data = attachment.imageData,
+               let nsImage = NSImage(data: data) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 28, height: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else {
+                Image(systemName: "doc.text")
+                    .font(.caption2)
+            }
             VStack(alignment: .leading, spacing: 0) {
                 Text(attachment.fileName)
                     .font(.caption)
                     .lineLimit(1)
-                Text("~\(attachment.tokenEstimate.formatted()) tokens")
+                Text(attachment.isImage ? "image" : "~\(attachment.tokenEstimate.formatted()) tokens")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -370,6 +396,8 @@ struct ChatView: View {
         session.title = "New Session"
         session.titleIsAuto = true
         session.updatedAt = .now
+        session.historySummary = ""
+        session.summarizedUntil = nil
         draft = ""
         viewModel.contextInfo = nil
         viewModel.dismissError()
@@ -381,6 +409,15 @@ struct ChatView: View {
             importURLs(urls)
         case .failure(let error):
             viewModel.errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Loads which server models support vision, so the view model can choose the
+    /// native-vision vs. preprocessor path when an image is attached.
+    private func loadVisionCapabilities() async {
+        guard let client = OllamaClient(baseURLString: serverURL) else { return }
+        if let models = try? await client.models() {
+            viewModel.availableVisionModelNames = Set(models.filter(\.supportsVision).map(\.name))
         }
     }
 

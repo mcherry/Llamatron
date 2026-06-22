@@ -39,6 +39,16 @@ final class ChatSession {
     var appleSamplingRaw: String = AppleSamplingMode.automatic.rawValue
     /// How to handle reasoning for thinking models (Ollama `think`). See `ReasoningMode`.
     var reasoningRaw: String = ReasoningMode.auto.rawValue
+    /// How conversation history is fitted into the window. See `HistoryMode`.
+    var historyModeRaw: String = HistoryMode.full.rawValue
+    /// Cached rolling summary of older turns (for `.summarize` history mode).
+    var historySummary: String = ""
+    /// `createdAt` of the newest message already folded into `historySummary`.
+    var summarizedUntil: Date?
+    /// Vision model used to describe attached images before sending to the primary
+    /// model (the multi-model "eyes" pipeline). Empty = no dedicated vision model;
+    /// images then go natively to the primary model if it supports vision.
+    var visionModel: String = ""
 
     @Relationship(deleteRule: .cascade, inverse: \ChatMessage.session)
     var messages: [ChatMessage] = []
@@ -72,6 +82,12 @@ final class ChatSession {
     var backend: BackendKind {
         get { BackendKind(rawValue: backendRaw) ?? .ollama }
         set { backendRaw = newValue.rawValue }
+    }
+
+    /// Typed accessor over `historyModeRaw`.
+    var historyMode: HistoryMode {
+        get { HistoryMode(rawValue: historyModeRaw) ?? .full }
+        set { historyModeRaw = newValue.rawValue }
     }
 
     /// The session's sampling parameters as a plain `Sendable` value for requests.

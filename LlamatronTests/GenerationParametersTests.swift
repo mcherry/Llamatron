@@ -58,6 +58,28 @@ final class GenerationParametersTests: XCTestCase {
         XCTAssertEqual(options["stop"] as? [String], ["END", "STOP"])
     }
 
+    /// The request payload (used by the turn inspector) must encode the *entire*
+    /// conversation in order, so a long chat's payload is complete and accurate.
+    func testEncodesAllMessagesInOrder() throws {
+        let messages = [
+            ChatTurn(role: "system", content: "sys"),
+            ChatTurn(role: "user", content: "u1"),
+            ChatTurn(role: "assistant", content: "a1"),
+            ChatTurn(role: "user", content: "u2"),
+            ChatTurn(role: "assistant", content: "a2"),
+            ChatTurn(role: "user", content: "u3"),
+        ]
+        let request = ChatRequest(model: "qwen", messages: messages, contextSize: 8192)
+        let data = try OllamaClient.encodeChatBody(request)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let encoded = try XCTUnwrap(json["messages"] as? [[String: Any]])
+
+        XCTAssertEqual(encoded.count, messages.count, "every message must be present")
+        XCTAssertEqual(encoded.map { $0["content"] as? String },
+                       ["sys", "u1", "a1", "u2", "a2", "u3"], "order must be preserved")
+        XCTAssertEqual(encoded.last?["role"] as? String, "user", "latest turn is last")
+    }
+
     func testOmitsUnsetParameters() throws {
         let request = ChatRequest(model: "qwen", messages: [], contextSize: 8192)
         let options = try encodedOptions(request)

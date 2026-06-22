@@ -52,18 +52,20 @@ struct SessionConfigView: View {
                 backendSection
                 if session.backend == .ollama {
                     modelSection
+                    visionSection
                     contextSection
                     generationSection
                 }
                 if session.backend == .appleIntelligence {
                     appleGenerationSection
                 }
+                historySection
                 contextStrategySection
                 systemPromptSection
             }
             .formStyle(.grouped)
         }
-        .frame(width: 470, height: 580)
+        .frame(width: 470, height: 620)
         .task { await loadModels() }
         .onAppear(perform: loadParameterFields)
     }
@@ -135,6 +137,24 @@ struct SessionConfigView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
+        }
+    }
+
+    private var visionSection: some View {
+        Section("Vision") {
+            Picker("Vision model", selection: $session.visionModel) {
+                Text("None").tag("")
+                ForEach(visionModels) { model in
+                    Text(model.name).tag(model.name)
+                }
+                if !session.visionModel.isEmpty,
+                   !visionModels.contains(where: { $0.name == session.visionModel }) {
+                    Text(session.visionModel).tag(session.visionModel)
+                }
+            }
+            Text(visionHelpText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -273,6 +293,28 @@ struct SessionConfigView: View {
                 .multilineTextAlignment(.trailing)
                 .frame(width: 120)
                 .onChange(of: text.wrappedValue) { commit() }
+        }
+    }
+
+    private var historySection: some View {
+        Section("Conversation History") {
+            Picker("When the window fills", selection: $session.historyMode) {
+                ForEach(HistoryMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            Text(session.historyMode.help)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if session.historyMode.needsServer && session.backend == .appleIntelligence {
+                Label("Without a reachable Ollama server, this falls back to truncation.",
+                      systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Models are stateless, so the whole conversation is re-sent each turn. Short chats always send in full; these modes only engage once the history would overflow the window.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -419,5 +461,25 @@ struct SessionConfigView: View {
             loadError = error.localizedDescription
         }
         loading = false
+    }
+
+    /// Models that can accept image input (vision capability).
+    private var visionModels: [OllamaModel] {
+        models.filter(\.supportsVision)
+    }
+
+    /// Whether the chosen primary model can natively see images.
+    private var primarySupportsVision: Bool {
+        models.first(where: { $0.name == session.modelName })?.supportsVision ?? false
+    }
+
+    private var visionHelpText: String {
+        if !session.visionModel.isEmpty {
+            return "Multi-model: attached images are described by \(session.visionModel), then the description is sent to \(session.modelName.isEmpty ? "the primary model" : session.modelName)."
+        }
+        if primarySupportsVision {
+            return "\(session.modelName) supports vision, so attached images are sent to it directly. Pick a vision model here to instead describe images with one model and reason with another."
+        }
+        return "Pick a vision model to enable image attachments: it describes images, and the description is sent to your primary model. (Your primary model can't accept images directly.)"
     }
 }

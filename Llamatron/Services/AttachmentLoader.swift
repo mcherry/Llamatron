@@ -18,6 +18,12 @@ enum AttachmentLoader {
         return types
     }()
 
+    /// Image content types for vision-model attachments.
+    static let imageTypes: [UTType] = [.png, .jpeg, .gif, .bmp, .tiff, .webP, .heic, .image]
+
+    /// All types offered in the importer (text documents + images).
+    static var importTypes: [UTType] { allowedTypes + imageTypes }
+
     enum LoaderError: LocalizedError {
         case unreadable(String)
         case empty(String)
@@ -30,6 +36,16 @@ enum AttachmentLoader {
         }
     }
 
+    /// Whether a URL looks like an image, by its uniform type or extension.
+    static func isImage(_ url: URL) -> Bool {
+        if let type = UTType(filenameExtension: url.pathExtension),
+           type.conforms(to: .image) {
+            return true
+        }
+        return ["png", "jpg", "jpeg", "gif", "bmp", "tiff", "tif", "webp", "heic", "heif"]
+            .contains(url.pathExtension.lowercased())
+    }
+
     @MainActor
     @discardableResult
     static func load(from url: URL,
@@ -40,6 +56,15 @@ enum AttachmentLoader {
 
         let name = url.lastPathComponent
         let data = try Data(contentsOf: url)
+
+        // Image attachments are stored raw and sent to a vision model — not chunked.
+        if isImage(url) {
+            let attachment = Attachment(fileName: name, imageData: data)
+            attachment.session = session
+            modelContext.insert(attachment)
+            return attachment
+        }
+
         guard let text = String(data: data, encoding: .utf8)
                 ?? String(data: data, encoding: .isoLatin1) else {
             throw LoaderError.unreadable(name)

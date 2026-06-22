@@ -30,6 +30,18 @@ final class ChatMessage {
     /// Encoded `[RetrievedChunkInfo]` when retrieval ran for this turn, for the
     /// retrieval inspector. `nil`/empty otherwise.
     var retrievalData: Data?
+    /// This turn's embedding (packed `[Float]`), computed lazily when the session uses
+    /// the "retrieve relevant turns" history mode. `nil` until embedded.
+    var embeddingData: Data?
+    /// Human-readable note describing what conversation-history management did for this
+    /// turn (mode + action, e.g. the summary text). `nil` when history wasn't managed.
+    var historyNote: String?
+    /// Encoded `[RetrievedChunkInfo]` for earlier turns pulled in by history retrieval.
+    var historyRetrievalData: Data?
+    /// What the vision step produced for this turn: which model saw the image(s) and
+    /// the description it generated (preprocessor pipeline), or a note that the image
+    /// went natively to the primary model. `nil` when no image was involved.
+    var visionNote: String?
 
     /// Inverse side of `ChatSession.messages`.
     var session: ChatSession?
@@ -40,15 +52,28 @@ final class ChatMessage {
         set { roleRaw = newValue.rawValue }
     }
 
+    /// Typed view over `embeddingData`.
+    var embedding: [Float]? {
+        get { embeddingData.map(Vector.unpack) }
+        set { embeddingData = newValue.map(Vector.pack) }
+    }
+
     /// Decoded retrieval details for the inspector.
     var retrievedChunks: [RetrievedChunkInfo] {
         guard let retrievalData else { return [] }
         return (try? JSONDecoder().decode([RetrievedChunkInfo].self, from: retrievalData)) ?? []
     }
 
+    /// Decoded earlier-turn retrieval details for the inspector.
+    var historyRetrievedChunks: [RetrievedChunkInfo] {
+        guard let historyRetrievalData else { return [] }
+        return (try? JSONDecoder().decode([RetrievedChunkInfo].self, from: historyRetrievalData)) ?? []
+    }
+
     /// Whether this message has any inspector data to show.
     var hasInspectorData: Bool {
         requestPayload != nil || !retrievedChunks.isEmpty || firstTokenSeconds != nil
+            || historyNote != nil || visionNote != nil
     }
 
     /// Time-to-first-token as a compact label, e.g. "0.4s".

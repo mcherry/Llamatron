@@ -20,6 +20,12 @@ struct MessageInspectorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     metricsSection
+                    if let vision = message.visionNote {
+                        visionSection(vision)
+                    }
+                    if message.historyNote != nil || !message.historyRetrievedChunks.isEmpty {
+                        historySection
+                    }
                     if !message.retrievedChunks.isEmpty {
                         retrievalSection
                     }
@@ -56,6 +62,42 @@ struct MessageInspectorView: View {
                 .monospacedDigit()
         }
         .font(.callout)
+    }
+
+    // MARK: - Vision
+
+    private func visionSection(_ note: String) -> some View {
+        section("Vision", systemImage: "eye") {
+            Text(note)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: - Conversation history
+
+    private var historySection: some View {
+        section("Conversation History", systemImage: "clock.arrow.circlepath") {
+            VStack(alignment: .leading, spacing: 10) {
+                if let note = message.historyNote {
+                    Text(note)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if !message.historyRetrievedChunks.isEmpty {
+                    Text("Earlier turns pulled in, ranked by similarity to your message:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(message.historyRetrievedChunks.sorted { $0.score > $1.score }) { chunk in
+                        chunkRow(chunk)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Retrieval
@@ -114,10 +156,11 @@ struct MessageInspectorView: View {
                     .buttonStyle(.borderless)
                     .font(.caption)
                 }
-                ScrollView(.horizontal, showsIndicators: true) {
+                ScrollView([.vertical, .horizontal], showsIndicators: true) {
                     Text(payload)
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
                 }
                 .frame(maxHeight: 240)

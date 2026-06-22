@@ -17,4 +17,16 @@ enum Vector {
         let denom = normA.squareRoot() * normB.squareRoot()
         return denom == 0 ? 0 : dot / denom
     }
+
+    /// Packs a vector into contiguous little-endian `Float` bytes for cheap SwiftData
+    /// storage. `unpack` is the inverse.
+    static func pack(_ vector: [Float]) -> Data {
+        vector.withUnsafeBufferPointer { Data(buffer: $0) }
+    }
+
+    static func unpack(_ data: Data) -> [Float] {
+        var vector = [Float](repeating: 0, count: data.count / MemoryLayout<Float>.stride)
+        _ = vector.withUnsafeMutableBytes { data.copyBytes(to: $0) }
+        return vector
+    }
 }
