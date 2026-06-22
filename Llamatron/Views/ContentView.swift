@@ -30,7 +30,12 @@ struct ContentView: View {
             .navigationTitle("Sessions")
             .navigationSplitViewColumnWidth(min: 240, ideal: 300, max: 420)
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    SettingsLink {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                    .help("Program Settings")
+
                     Button(action: newSession) {
                         Label("New Session", systemImage: "square.and.pencil")
                     }

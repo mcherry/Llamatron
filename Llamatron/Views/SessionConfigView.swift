@@ -36,6 +36,9 @@ struct SessionConfigView: View {
     @State private var stopText = ""
     @State private var maxTokensText = ""
 
+    /// Shared width for the generation parameter entry fields.
+    private let fieldWidth: CGFloat = 160
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -191,35 +194,41 @@ struct SessionConfigView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            parameterField("Temperature", text: $tempText, placeholder: "default") {
+            parameterField("Temperature", text: $tempText,
+                           help: "Higher values make output more random and creative; lower values make it more focused and predictable. Blank uses the server default.") {
                 session.temperature = parseDouble(tempText)
             }
-            parameterField("Top P", text: $topPText, placeholder: "default") {
+            parameterField("Top P", text: $topPText,
+                           help: "Nucleus sampling: the model only considers the most likely tokens whose probabilities add up to P. Lower is more focused. Blank uses the server default.") {
                 session.topP = parseDouble(topPText)
             }
-            parameterField("Top K", text: $topKText, placeholder: "default") {
+            parameterField("Top K", text: $topKText,
+                           help: "The model samples only from the K most likely tokens. Lower is more focused. Blank uses the server default.") {
                 session.topK = parseInt(topKText)
             }
-            parameterField("Repeat penalty", text: $repeatText, placeholder: "default") {
+            parameterField("Repeat penalty", text: $repeatText,
+                           help: "Penalizes tokens that have already appeared to reduce repetition. Above 1 discourages repeats. Blank uses the server default.") {
                 session.repeatPenalty = parseDouble(repeatText)
             }
 
             seedRow
 
             LabeledContent("Stop sequences") {
-                TextField("comma-separated", text: $stopText)
-                    .multilineTextAlignment(.trailing)
-                    .onChange(of: stopText) {
-                        session.stopSequences = stopText
-                            .split(whereSeparator: { $0 == "," || $0 == "\n" })
-                            .map { $0.trimmingCharacters(in: .whitespaces) }
-                            .filter { !$0.isEmpty }
-                    }
+                HStack(spacing: 6) {
+                    TextField("", text: $stopText)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(1)
+                        .frame(width: fieldWidth)
+                        .onChange(of: stopText) {
+                            session.stopSequences = stopText
+                                .split(whereSeparator: { $0 == "," || $0 == "\n" })
+                                .map { $0.trimmingCharacters(in: .whitespaces) }
+                                .filter { !$0.isEmpty }
+                        }
+                    infoButton("Generation stops as soon as the model produces any of these strings (e.g. \"User:\"). Separate multiple with commas.")
+                }
             }
 
-            Text("Blank fields use the server default. Set a fixed seed for reproducible output.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             Button("Reset to Defaults", action: clearGenerationParameters)
                 .disabled(session.generationParameters.isEmpty)
         }
@@ -230,10 +239,12 @@ struct SessionConfigView: View {
     /// (which bundles top-k / top-p / greedy), with a seed for the random modes.
     private var appleGenerationSection: some View {
         Section("Generation") {
-            parameterField("Temperature", text: $tempText, placeholder: "default") {
+            parameterField("Temperature", text: $tempText,
+                           help: "Higher values make output more random and creative; lower values make it more focused and predictable. Blank uses Apple's default.") {
                 session.temperature = parseDouble(tempText)
             }
-            parameterField("Max response tokens", text: $maxTokensText, placeholder: "default") {
+            parameterField("Max response tokens", text: $maxTokensText,
+                           help: "Caps how many tokens the model may generate in its reply. Blank uses Apple's default.") {
                 session.maxResponseTokens = parseInt(maxTokensText)
             }
             Picker("Sampling", selection: $session.appleSamplingMode) {
@@ -242,12 +253,14 @@ struct SessionConfigView: View {
                 }
             }
             if session.appleSamplingMode == .topK {
-                parameterField("Top-K", text: $topKText, placeholder: "50") {
+                parameterField("Top-K", text: $topKText,
+                               help: "The model samples only from the K most likely tokens. Lower is more focused.") {
                     session.topK = parseInt(topKText)
                 }
             }
             if session.appleSamplingMode == .topP {
-                parameterField("Top-P", text: $topPText, placeholder: "0.9") {
+                parameterField("Top-P", text: $topPText,
+                               help: "Nucleus sampling: the model only considers the most likely tokens whose probabilities add up to P. Lower is more focused.") {
                     session.topP = parseDouble(topPText)
                 }
             }
@@ -266,10 +279,6 @@ struct SessionConfigView: View {
     private var seedRow: some View {
         LabeledContent("Seed") {
             HStack(spacing: 6) {
-                TextField("random", text: $seedText)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 120)
-                    .onChange(of: seedText) { session.seed = parseInt(seedText) }
                 Button {
                     let value = Int.random(in: 0...Int(UInt32.max))
                     seedText = String(value)
@@ -278,22 +287,37 @@ struct SessionConfigView: View {
                     Image(systemName: "die.face.5")
                 }
                 .buttonStyle(.borderless)
-                .help("Random seed")
+                .help("Set a random seed")
+                TextField("", text: $seedText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: fieldWidth)
+                    .onChange(of: seedText) { session.seed = parseInt(seedText) }
+                infoButton("Fixes the random seed so identical requests reproduce the same output. Blank uses a new random seed each time.")
             }
         }
     }
 
-    /// A right-aligned numeric text field row that commits on change.
+    /// A numeric text field row with a trailing info icon, committing on change.
     private func parameterField(_ title: String,
                                 text: Binding<String>,
-                                placeholder: String,
+                                help: String,
                                 commit: @escaping () -> Void) -> some View {
         LabeledContent(title) {
-            TextField(placeholder, text: text)
-                .multilineTextAlignment(.trailing)
-                .frame(width: 120)
-                .onChange(of: text.wrappedValue) { commit() }
+            HStack(spacing: 6) {
+                TextField("", text: text)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: fieldWidth)
+                    .onChange(of: text.wrappedValue) { commit() }
+                infoButton(help)
+            }
         }
+    }
+
+    /// A small "i" info icon with a hover tooltip describing the adjacent field.
+    private func infoButton(_ help: String) -> some View {
+        Image(systemName: "info.circle")
+            .foregroundStyle(.secondary)
+            .help(help)
     }
 
     private var historySection: some View {
