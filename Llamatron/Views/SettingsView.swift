@@ -1,0 +1,95 @@
+import SwiftUI
+
+/// App-wide settings (Cmd-,). Server address plus defaults applied to new sessions.
+struct SettingsView: View {
+    @AppStorage(SettingsKey.serverURL) private var serverURL = SettingsDefault.serverURL
+    @AppStorage(SettingsKey.defaultContextSize) private var defaultContextSize = SettingsDefault.contextSize
+    @AppStorage(SettingsKey.defaultModel) private var defaultModel = ""
+    @AppStorage(SettingsKey.requestTimeout) private var requestTimeout = SettingsDefault.timeout
+    @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
+
+    @State private var allModels: [OllamaModel] = []
+    @State private var loadingModels = false
+    @State private var showingModelManager = false
+
+    private var chatModels: [OllamaModel] {
+        allModels.filter { !$0.isEmbeddingModel }
+    }
+
+    /// Embedding-model names for the retrieval picker, always including the current
+    /// selection and the default so the value is never orphaned.
+    private var embeddingChoices: [String] {
+        var names = Set(allModels.filter(\.isEmbeddingModel).map(\.name))
+        names.insert(SettingsDefault.embeddingModel)
+        names.insert(embeddingModel)
+        return names.sorted()
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                ServerSettingsForm()
+            }
+            Section("Defaults for New Sessions") {
+                Picker("Default model", selection: $defaultModel) {
+                    Text("None").tag("")
+                    ForEach(chatModels) { model in
+                        Text(model.name).tag(model.name)
+                    }
+                    if !defaultModel.isEmpty,
+                       !chatModels.contains(where: { $0.name == defaultModel }) {
+                        Text(defaultModel).tag(defaultModel)
+                    }
+                }
+                Picker("Context size", selection: $defaultContextSize) {
+                    ForEach(ContextSize.presets, id: \.self) { size in
+                        Text(ContextSize.label(size)).tag(size)
+                    }
+                }
+            }
+            Section("Network") {
+                Picker("Request timeout", selection: $requestTimeout) {
+                    Text("30 seconds").tag(30)
+                    Text("60 seconds").tag(60)
+                    Text("120 seconds").tag(120)
+                    Text("300 seconds").tag(300)
+                }
+            }
+            Section("Models") {
+                Button {
+                    showingModelManager = true
+                } label: {
+                    Label("Manage Models…", systemImage: "shippingbox")
+                }
+                Text("Pull new models, see what's loaded, and free space by deleting models on the server.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Attached Files") {
+                Picker("Embedding model", selection: $embeddingModel) {
+                    ForEach(embeddingChoices, id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                Text("Used to find relevant excerpts in attached files (retrieval). Pick an embedding model available on your server.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 480, height: 520)
+        .task { await loadModels() }
+        .sheet(isPresented: $showingModelManager) {
+            ModelManagementView(serverURL: serverURL)
+        }
+    }
+
+    private func loadModels() async {
+        guard let client = OllamaClient(baseURLString: serverURL) else { return }
+        loadingModels = true
+        if let fetched = try? await client.models() {
+            allModels = fetched.sorted { $0.name < $1.name }
+        }
+        loadingModels = false
+    }
+}

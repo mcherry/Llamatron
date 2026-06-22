@@ -1,0 +1,11 @@
+# Xcode / build
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# XcodeGen output (regenerate from project.yml)
+Llamatron.xcodeproj/
+
+# macOS
+.DS_Store

@@ -1,0 +1,85 @@
+import Foundation
+import SwiftData
+
+/// A single turn in a conversation: a user prompt, an assistant reply, or the
+/// (usually hidden) system prompt. Token counts are optional and come from
+/// Ollama's final streamed payload, for a future stats affordance.
+@Model
+final class ChatMessage {
+    var id: UUID = UUID()
+    /// Backing storage for `role`. See the `role` computed property.
+    var roleRaw: String = Role.user.rawValue
+    var content: String = ""
+    /// Reasoning text from thinking models (deepseek-r1, qwen3, …), shown in a
+    /// collapsible section. Empty for non-thinking models and non-assistant turns.
+    var thinking: String = ""
+    var createdAt: Date = Date.now
+    var promptTokens: Int?
+    var evalTokens: Int?
+    /// Generation time for this reply, in nanoseconds (Ollama's `eval_duration`).
+    /// Used with `evalTokens` to show tokens/second.
+    var evalDurationNanos: Int?
+    /// Wall-clock time this reply took to generate, in seconds. Set when streaming
+    /// finishes (any backend). `nil` while still generating or for non-assistant turns.
+    var generationSeconds: Double?
+    /// Time to the first streamed token, in seconds (TTFT) — a key latency metric.
+    var firstTokenSeconds: Double?
+    /// Pretty-printed JSON of the exact request that produced this reply, for the
+    /// request inspector. `nil` for user turns.
+    var requestPayload: String?
+    /// Encoded `[RetrievedChunkInfo]` when retrieval ran for this turn, for the
+    /// retrieval inspector. `nil`/empty otherwise.
+    var retrievalData: Data?
+
+    /// Inverse side of `ChatSession.messages`.
+    var session: ChatSession?
+
+    /// Typed accessor over `roleRaw`.
+    var role: Role {
+        get { Role(rawValue: roleRaw) ?? .user }
+        set { roleRaw = newValue.rawValue }
+    }
+
+    /// Decoded retrieval details for the inspector.
+    var retrievedChunks: [RetrievedChunkInfo] {
+        guard let retrievalData else { return [] }
+        return (try? JSONDecoder().decode([RetrievedChunkInfo].self, from: retrievalData)) ?? []
+    }
+
+    /// Whether this message has any inspector data to show.
+    var hasInspectorData: Bool {
+        requestPayload != nil || !retrievedChunks.isEmpty || firstTokenSeconds != nil
+    }
+
+    /// Time-to-first-token as a compact label, e.g. "0.4s".
+    var firstTokenLabel: String? {
+        guard let firstTokenSeconds, firstTokenSeconds >= 0 else { return nil }
+        return String(format: "%.1fs", firstTokenSeconds)
+    }
+
+    /// Generation speed in tokens per second, when timing stats are available.
+    var tokensPerSecond: Double? {
+        guard let evalTokens, let evalDurationNanos, evalDurationNanos > 0 else { return nil }
+        return Double(evalTokens) / (Double(evalDurationNanos) / 1_000_000_000)
+    }
+
+    /// Compact human-readable generation time, e.g. "0.8s", "30s", or "1m 5s".
+    var generationDurationLabel: String? {
+        guard let generationSeconds, generationSeconds > 0 else { return nil }
+        if generationSeconds < 1 {
+            return String(format: "%.1fs", generationSeconds)
+        }
+        let total = Int(generationSeconds.rounded())
+        if total < 60 {
+            return "\(total)s"
+        }
+        return "\(total / 60)m \(total % 60)s"
+    }
+
+    init(role: Role, content: String, createdAt: Date = .now) {
+        self.id = UUID()
+        self.roleRaw = role.rawValue
+        self.content = content
+        self.createdAt = createdAt
+    }
+}
