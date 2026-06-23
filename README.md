@@ -14,8 +14,8 @@ can run, compare, and inspect models from one SwiftUI app.
 - Multiple saved sessions in a sidebar; auto-saved and restored via SwiftData.
 - Real-time streaming responses with autoscroll, left/right-aligned bubbles, and
   per-turn timestamps and generation time.
-- Markdown rendering including fenced code blocks; fully selectable text and per-turn
-  copy.
+- Markdown rendering including fenced code blocks, tables, and ` ```mermaid ` diagrams
+  (rendered locally in a sandboxed web view); fully selectable text and per-turn copy.
 - Auto-generated session titles (each session names itself using its own model).
 - A resizable composer with an embedded send/stop button — **Return** sends,
   **Shift+Return** inserts a newline.
@@ -120,4 +120,7 @@ covered by unit tests.
 
 ## License
 
-No license has been chosen yet. All rights reserved by the author until one is added.
+Llamatron is released under the [MIT License](LICENSE). © 2026 Mike Cherry.
+
+It bundles [Mermaid](https://github.com/mermaid-js/mermaid) (MIT) for diagram rendering;
+see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for details.
