@@ -14,8 +14,9 @@ can run, compare, and inspect models from one SwiftUI app.
 - Multiple saved sessions in a sidebar; auto-saved and restored via SwiftData.
 - Real-time streaming responses with autoscroll, left/right-aligned bubbles, and
   per-turn timestamps and generation time.
-- Markdown rendering including fenced code blocks, tables, and ` ```mermaid ` diagrams
-  (rendered locally in a sandboxed web view); fully selectable text and per-turn copy.
+- Markdown rendering with syntax-highlighted code blocks (Swift, Python, JS/TS, Go,
+  Rust, C/C++, Java, Ruby, SQL, shell, and more), tables, and ` ```mermaid ` diagrams
+  rendered locally in a sandboxed web view; fully selectable text and per-turn copy.
 - Auto-generated session titles (each session names itself using its own model).
 - A resizable composer with an embedded send/stop button — **Return** sends,
   **Shift+Return** inserts a newline.
@@ -23,11 +24,20 @@ can run, compare, and inspect models from one SwiftUI app.
 **Per-session configuration**
 - Choose the backend (Ollama or Apple Intelligence) and, for Ollama, the model and
   context window.
-- A system prompt with a reusable **prompt library** (saved presets).
+- A system prompt with a reusable **prompt library** (saved presets) and a live token /
+  context-cost estimate.
 - Generation parameters with a fixed **seed** for reproducible output
   (temperature, top-p, top-k, repeat penalty, stop sequences for Ollama; temperature,
   sampling mode, max response tokens, and seed for Apple).
 - A reasoning control (Auto / On / Off) for thinking models.
+- A **conversation-history strategy** for long chats — send in full, truncate, roll up
+  into a running summary, or retrieve the most relevant earlier turns — so sessions keep
+  working as they outgrow the context window.
+
+**Vision & multimodal**
+- Attach images and ask about them. A vision-capable primary model sees them directly,
+  or you can pair a separate **vision model** that describes images for a text-only
+  model to reason over.
 
 **Document context (lightweight RAG)**
 - Attach text files (file picker or drag-and-drop). Llamatron fits them into the prompt
@@ -39,7 +49,8 @@ can run, compare, and inspect models from one SwiftUI app.
 - A collapsible **reasoning/thinking** view for models that expose their chain of
   thought.
 - A per-turn **inspector**: latency including time-to-first-token, token counts, the
-  retrieved context chunks with similarity scores, and the exact request payload sent.
+  retrieved context chunks with similarity scores, conversation-history and vision notes,
+  and the exact request payload sent.
 - **Session export** to Markdown or JSON.
 - A **model manager**: list installed models, pull new ones with a progress bar, delete
   models, and see which are currently loaded.
@@ -115,8 +126,9 @@ xcodebuild -project Llamatron.xcodeproj -scheme Llamatron \
 ```
 
 The pure logic — JSONL stream parsing, token budgeting, the context-strategy planner,
-chunking, vector similarity, title cleanup, request encoding, and session export — is
-covered by unit tests.
+chunking, vector similarity, conversation-history management, title cleanup, request
+encoding, session export, Markdown/table parsing, Mermaid label repair, and syntax
+highlighting — is covered by a hermetic unit-test suite (160+ tests, no network).
 
 ## License
 
