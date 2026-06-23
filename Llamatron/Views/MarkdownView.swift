@@ -123,7 +123,7 @@ private struct CodeBlockView: View {
             .background(.quaternary)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
+                Text(highlightedCode)
                     .font(.system(.body, design: .monospaced))
                     .textSelection(.enabled)
                     .padding(10)
@@ -137,6 +137,30 @@ private struct CodeBlockView: View {
                 .strokeBorder(Color(nsColor: .separatorColor))
         )
         .onHover { hovering = $0 }
+    }
+
+    /// Lexically syntax-highlights the code for its language. Unknown languages render
+    /// as a single plain span (the underlying string copied is always the raw code).
+    private var highlightedCode: AttributedString {
+        var result = AttributedString()
+        for token in SyntaxHighlighter.tokens(code, language: language) {
+            var piece = AttributedString(token.text)
+            if let color = Self.color(for: token.kind) {
+                piece.foregroundColor = color
+            }
+            result.append(piece)
+        }
+        return result
+    }
+
+    private static func color(for kind: SyntaxHighlighter.Kind) -> Color? {
+        switch kind {
+        case .plain: return nil
+        case .keyword: return Color(nsColor: .systemPurple)
+        case .string: return Color(nsColor: .systemRed)
+        case .comment: return Color(nsColor: .systemGreen)
+        case .number: return Color(nsColor: .systemBlue)
+        }
     }
 }
 
