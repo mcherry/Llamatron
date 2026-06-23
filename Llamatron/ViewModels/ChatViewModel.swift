@@ -23,6 +23,7 @@ final class ChatViewModel {
               session: ChatSession,
               client: OllamaClient?,
               embeddingModel: String,
+              diagramGuidance: Bool = false,
               modelContext: ModelContext) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, session.isConfigured else { return }
@@ -95,7 +96,8 @@ final class ChatViewModel {
                                         contextBlock: contextBlock,
                                         historyTurns: historyTurns,
                                         imageDescription: vision.description,
-                                        nativeImages: vision.nativeImages)
+                                        nativeImages: vision.nativeImages,
+                                        diagramGuidance: diagramGuidance)
             let request = ChatRequest(model: session.modelName,
                                       messages: turns,
                                       contextSize: session.contextSize,
@@ -181,6 +183,17 @@ final class ChatViewModel {
         }
     }
 
+    /// A short system instruction (opt-in, app-wide) telling the model how to emit
+    /// diagrams so they render cleanly inline. Addresses two common model habits:
+    /// unquoted Mermaid labels (which fail to parse) and "paste this into an online
+    /// editor" boilerplate (redundant since the app renders diagrams in place).
+    static let diagramGuidanceText = """
+    Rendering note: this app renders Mermaid diagrams inline. When a diagram helps, \
+    include it as a single ```mermaid code block. Put any node label that contains \
+    punctuation in double quotes, e.g. A["Use weapon (knife, bat)"]. Do not tell the \
+    user to copy or paste the diagram into an external or online editor.
+    """
+
     /// Prepends the session system prompt and any attachment-context block to the
     /// already-prepared conversation `historyTurns` (which include the new user turn).
     /// When `nativeImages` is non-empty, they're attached to the latest user turn so a
@@ -189,11 +202,15 @@ final class ChatViewModel {
                             contextBlock: String?,
                             historyTurns: [ChatTurn],
                             imageDescription: String? = nil,
-                            nativeImages: [String] = []) -> [ChatTurn] {
+                            nativeImages: [String] = [],
+                            diagramGuidance: Bool = false) -> [ChatTurn] {
         var turns: [ChatTurn] = []
         let systemPrompt = session.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         if !systemPrompt.isEmpty {
             turns.append(ChatTurn(role: Role.system.rawValue, content: systemPrompt))
+        }
+        if diagramGuidance {
+            turns.append(ChatTurn(role: Role.system.rawValue, content: Self.diagramGuidanceText))
         }
         if let contextBlock, !contextBlock.isEmpty {
             let preamble = """

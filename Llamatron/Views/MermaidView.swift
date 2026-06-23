@@ -18,18 +18,32 @@ struct MermaidView: View {
     @State private var showingSource = false
     @State private var height: CGFloat = 80
     @State private var failed = false
+    @State private var errorText: String?
+    @State private var autoCorrected = false
     @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             if showingSource || failed {
+                if failed, let errorText {
+                    Text(errorText)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.top, 6)
+                }
                 sourceBlock
             } else {
                 MermaidWebView(source: source,
+                               repaired: MermaidSanitizer.repair(source),
                                dark: colorScheme == .dark,
                                height: $height,
-                               failed: $failed)
+                               failed: $failed,
+                               errorText: $errorText,
+                               autoCorrected: $autoCorrected)
                     .frame(height: height)
                     .frame(maxWidth: .infinity)
                     .padding(8)
@@ -44,11 +58,24 @@ struct MermaidView: View {
         .onHover { hovering = $0 }
     }
 
+    private var headerLabel: String {
+        if failed { return "mermaid · invalid diagram syntax" }
+        if autoCorrected { return "mermaid · auto-corrected" }
+        return "mermaid"
+    }
+
+    private var headerColor: AnyShapeStyle {
+        if failed { return AnyShapeStyle(.red) }
+        if autoCorrected { return AnyShapeStyle(.orange) }
+        return AnyShapeStyle(.secondary)
+    }
+
     private var header: some View {
         HStack {
-            Text(failed ? "mermaid (couldn’t render)" : "mermaid")
+            Text(headerLabel)
                 .font(.caption2)
-                .foregroundStyle(failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                .foregroundStyle(headerColor)
+                .help(autoCorrected ? "The model’s diagram had invalid syntax (unquoted labels); Llamatron quoted them to render it. Toggle Source to see the original." : "")
             Spacer()
             if !failed {
                 Button(showingSource ? "Diagram" : "Source") {
@@ -85,16 +112,30 @@ struct MermaidView: View {
     }
 }
 
+/// A `WKWebView` that does not consume scroll-wheel events. The diagram is sized to fit
+/// its content, so the web view never needs to scroll itself; forwarding the event to
+/// the next responder lets the enclosing chat transcript scroll normally even when the
+/// pointer is over a diagram.
+private final class PassthroughScrollWebView: WKWebView {
+    override func scrollWheel(with event: NSEvent) {
+        nextResponder?.scrollWheel(with: event)
+    }
+}
+
 /// The sandboxed WebKit host that actually renders the diagram. Kept private to
 /// `MermaidView`; all the security configuration lives here.
 private struct MermaidWebView: NSViewRepresentable {
     let source: String
+    let repaired: String
     let dark: Bool
     @Binding var height: CGFloat
     @Binding var failed: Bool
+    @Binding var errorText: String?
+    @Binding var autoCorrected: Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(height: $height, failed: $failed)
+        Coordinator(height: $height, failed: $failed,
+                    errorText: $errorText, autoCorrected: $autoCorrected)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -108,16 +149,18 @@ private struct MermaidWebView: NSViewRepresentable {
         config.websiteDataStore = .nonPersistent()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
 
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = PassthroughScrollWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         // Transparent so the SwiftUI card background shows through behind the diagram.
         webView.setValue(false, forKey: "drawsBackground")
-        context.coordinator.load(into: webView, source: source, dark: dark)
+        context.coordinator.webView = webView
+        context.coordinator.load(source: source, repaired: repaired, dark: dark)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        context.coordinator.reloadIfNeeded(webView, source: source, dark: dark)
+        context.coordinator.webView = webView
+        context.coordinator.reloadIfNeeded(source: source, repaired: repaired, dark: dark)
     }
 
     static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
@@ -130,24 +173,52 @@ private struct MermaidWebView: NSViewRepresentable {
     final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         private let height: Binding<CGFloat>
         private let failed: Binding<Bool>
+        private let errorText: Binding<String?>
+        private let autoCorrected: Binding<Bool>
+        weak var webView: WKWebView?
+
         private var loadedKey: String?
         private var didInitialLoad = false
 
-        init(height: Binding<CGFloat>, failed: Binding<Bool>) {
+        // Dual-attempt state: render the model's original source first, and only fall
+        // back to the auto-quoted version if the original fails to parse.
+        private var rawSource = ""
+        private var repairedSource = ""
+        private var dark = false
+        private var attemptedRepair = false
+        private var renderingRepair = false
+        private var firstError: String?
+
+        init(height: Binding<CGFloat>, failed: Binding<Bool>,
+             errorText: Binding<String?>, autoCorrected: Binding<Bool>) {
             self.height = height
             self.failed = failed
+            self.errorText = errorText
+            self.autoCorrected = autoCorrected
         }
 
-        func reloadIfNeeded(_ webView: WKWebView, source: String, dark: Bool) {
+        func reloadIfNeeded(source: String, repaired: String, dark: Bool) {
             guard key(source, dark) != loadedKey else { return }
-            load(into: webView, source: source, dark: dark)
+            load(source: source, repaired: repaired, dark: dark)
         }
 
-        func load(into webView: WKWebView, source: String, dark: Bool) {
+        func load(source: String, repaired: String, dark: Bool) {
             loadedKey = key(source, dark)
-            didInitialLoad = false
+            rawSource = source
+            repairedSource = repaired
+            self.dark = dark
+            attemptedRepair = false
+            renderingRepair = false
+            firstError = nil
             failed.wrappedValue = false
-            webView.loadHTMLString(Self.html(source: source, dark: dark), baseURL: nil)
+            errorText.wrappedValue = nil
+            autoCorrected.wrappedValue = false
+            render(rawSource)
+        }
+
+        private func render(_ src: String) {
+            didInitialLoad = false
+            webView?.loadHTMLString(Self.html(source: src, dark: dark), baseURL: nil)
         }
 
         private func key(_ source: String, _ dark: Bool) -> String { "\(dark)\n\(source)" }
@@ -172,8 +243,21 @@ private struct MermaidWebView: NSViewRepresentable {
                 if let number = message.body as? NSNumber {
                     height.wrappedValue = min(max(CGFloat(number.doubleValue), 20), 4000)
                 }
+                if renderingRepair { autoCorrected.wrappedValue = true }
             case "failed":
+                let text = (message.body as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                // First failure: try the auto-quoted version if it differs.
+                if !attemptedRepair, !repairedSource.isEmpty, repairedSource != rawSource {
+                    attemptedRepair = true
+                    renderingRepair = true
+                    firstError = text
+                    render(repairedSource)
+                    return
+                }
                 failed.wrappedValue = true
+                let shown = firstError ?? text
+                if let shown, !shown.isEmpty { errorText.wrappedValue = shown }
             default:
                 break
             }
@@ -197,16 +281,29 @@ private struct MermaidWebView: NSViewRepresentable {
             </head><body><div id="c"></div>
             <script>
             (function(){
-              function fail(e){ try{ window.webkit.messageHandlers.failed.postMessage(String(e)); }catch(_){ } }
+              function fail(e){
+                var msg = (e && e.str) ? e.str : ((e && e.message) ? e.message : String(e));
+                try{ window.webkit.messageHandlers.failed.postMessage(String(msg)); }catch(_){ }
+              }
               try{
                 mermaid.initialize({ startOnLoad:false, securityLevel:'strict', theme:'\(theme)' });
                 mermaid.parseError = function(err){ fail(err); };
                 mermaid.render('graph', \(encoded), function(svg){
-                  document.getElementById('c').innerHTML = svg;
-                  requestAnimationFrame(function(){
-                    var rect = document.getElementById('c').getBoundingClientRect();
-                    try{ window.webkit.messageHandlers.sizing.postMessage(rect.height + 4); }catch(_){ }
-                  });
+                  var c = document.getElementById('c');
+                  c.innerHTML = svg;
+                  // Report the rendered height now and whenever it changes (e.g. the
+                  // window resizes and the SVG, capped at max-width:100%, rescales), so
+                  // the SwiftUI frame always matches the content and never clips it.
+                  var last = -1;
+                  function report(){
+                    var h = c.getBoundingClientRect().height;
+                    if (Math.abs(h - last) < 1) return;
+                    last = h;
+                    try{ window.webkit.messageHandlers.sizing.postMessage(h + 4); }catch(_){ }
+                  }
+                  if (window.ResizeObserver) { new ResizeObserver(report).observe(c); }
+                  window.addEventListener('resize', report);
+                  requestAnimationFrame(report);
                 });
               }catch(e){ fail(e); }
             })();

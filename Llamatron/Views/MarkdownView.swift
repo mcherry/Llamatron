@@ -11,8 +11,13 @@ struct MarkdownView: View {
     var renderDiagrams: Bool = true
 
     var body: some View {
-        let blocks = MarkdownParser.parse(text)
-        VStack(alignment: .leading, spacing: 8) {
+        var blocks = MarkdownParser.parse(text)
+        // When diagrams render inline, strip the redundant "paste into a live editor"
+        // hint some models add. Display-only: `text` itself is untouched.
+        if renderDiagrams {
+            blocks = DiagramHintFilter.removeEditorHints(from: blocks)
+        }
+        return VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 view(for: block)
             }

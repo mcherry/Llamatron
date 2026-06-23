@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.defaultModel) private var defaultModel = ""
     @AppStorage(SettingsKey.requestTimeout) private var requestTimeout = SettingsDefault.timeout
     @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
+    @AppStorage(SettingsKey.diagramGuidance) private var diagramGuidance = false
 
     @State private var allModels: [OllamaModel] = []
     @State private var loadingModels = false
@@ -72,6 +73,12 @@ struct SettingsView: View {
                     }
                 }
                 Text("Used to find relevant excerpts in attached files (retrieval). Pick an embedding model available on your server.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Rendering") {
+                Toggle("Guide models to render diagrams inline", isOn: $diagramGuidance)
+                Text("Adds a short system instruction so models emit valid Mermaid diagrams (quoted labels) and skip “paste into an online editor” notes. Diagrams render inline in the chat. Appears in the request payload, visible in the turn inspector.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

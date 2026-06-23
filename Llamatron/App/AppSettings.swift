@@ -9,6 +9,7 @@ enum SettingsKey {
     static let didCompleteFirstRun = "didCompleteFirstRun"
     static let composerHeight = "composerHeight"
     static let embeddingModel = "embeddingModel"
+    static let diagramGuidance = "diagramGuidance"
 }
 
 /// Default values for the settings above.

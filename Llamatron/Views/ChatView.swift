@@ -12,6 +12,7 @@ struct ChatView: View {
     @AppStorage(SettingsKey.serverURL) private var serverURL = SettingsDefault.serverURL
     @AppStorage(SettingsKey.requestTimeout) private var requestTimeout = SettingsDefault.timeout
     @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
+    @AppStorage(SettingsKey.diagramGuidance) private var diagramGuidance = false
 
     @State private var viewModel = ChatViewModel()
     @State private var draft = ""
@@ -339,6 +340,7 @@ struct ChatView: View {
                        session: session,
                        client: client,
                        embeddingModel: embeddingModel,
+                       diagramGuidance: diagramGuidance,
                        modelContext: modelContext)
     }
 
