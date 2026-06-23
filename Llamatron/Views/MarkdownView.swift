@@ -172,13 +172,25 @@ private struct MarkdownTableView: View {
         Text(Markdown.inlineAttributed(text))
             .font(isHeader ? .body.weight(.semibold) : .body)
             .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.vertical, 6)
+            // Fill the row's height (a GridRow is as tall as its tallest cell) so the
+            // background and separators span the whole cell, not just the text. Without
+            // maxHeight, shorter cells leave a gap with a stray border line.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(isHeader ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
-            .overlay(
+            // Single interior separators (bottom + trailing); the outer border comes
+            // from the table's rounded overlay. Avoids the doubled lines a full per-cell
+            // rectangle would draw on shared edges.
+            .overlay(alignment: .bottom) {
                 Rectangle()
-                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
-            )
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(height: 0.5)
+            }
+            .overlay(alignment: .trailing) {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(width: 0.5)
+            }
     }
 }
