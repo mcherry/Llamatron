@@ -20,6 +20,10 @@ targets:
     platform: macOS
     sources:
       - path: Llamatron
+        excludes:
+          - "Resources/**"
+      - path: Llamatron/Resources
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.llamatron.Llamatron

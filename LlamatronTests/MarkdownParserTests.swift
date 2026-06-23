@@ -89,4 +89,89 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertEqual(MarkdownParser.parse(md),
                        [.paragraph("Line one\nstill one"), .paragraph("Second paragraph")])
     }
+
+    // MARK: - Tables
+
+    func testSimpleTable() {
+        let md = """
+        | Name | Size |
+        |------|------|
+        | qwen | 14b  |
+        | gpt  | 7b   |
+        """
+        XCTAssertEqual(MarkdownParser.parse(md), [
+            .table(headers: ["Name", "Size"],
+                   rows: [["qwen", "14b"], ["gpt", "7b"]])
+        ])
+    }
+
+    func testTableWithAlignmentColons() {
+        let md = """
+        | Left | Center | Right |
+        | :--- | :----: | ----: |
+        | a    | b      | c     |
+        """
+        XCTAssertEqual(MarkdownParser.parse(md), [
+            .table(headers: ["Left", "Center", "Right"],
+                   rows: [["a", "b", "c"]])
+        ])
+    }
+
+    func testTableWithoutOuterPipes() {
+        let md = """
+        Name | Size
+        -----|-----
+        qwen | 14b
+        """
+        XCTAssertEqual(MarkdownParser.parse(md), [
+            .table(headers: ["Name", "Size"], rows: [["qwen", "14b"]])
+        ])
+    }
+
+    func testRaggedRowsNormalizedToHeaderCount() {
+        let md = """
+        | A | B | C |
+        |---|---|---|
+        | 1 | 2 |
+        | 1 | 2 | 3 | 4 |
+        """
+        XCTAssertEqual(MarkdownParser.parse(md), [
+            .table(headers: ["A", "B", "C"],
+                   rows: [["1", "2", ""], ["1", "2", "3"]])
+        ])
+    }
+
+    func testParagraphFollowedByTable() {
+        let md = """
+        Here is a table:
+
+        | A | B |
+        |---|---|
+        | 1 | 2 |
+        """
+        XCTAssertEqual(MarkdownParser.parse(md), [
+            .paragraph("Here is a table:"),
+            .table(headers: ["A", "B"], rows: [["1", "2"]])
+        ])
+    }
+
+    func testPipesWithoutDelimiterStayParagraph() {
+        // A line with pipes but no `|---|` delimiter row is not a table.
+        let md = "a | b | c\nd | e | f"
+        XCTAssertEqual(MarkdownParser.parse(md), [.paragraph("a | b | c\nd | e | f")])
+    }
+
+    func testTableEndsAtBlankLine() {
+        let md = """
+        | A | B |
+        |---|---|
+        | 1 | 2 |
+
+        After.
+        """
+        XCTAssertEqual(MarkdownParser.parse(md), [
+            .table(headers: ["A", "B"], rows: [["1", "2"]]),
+            .paragraph("After.")
+        ])
+    }
 }

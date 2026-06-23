@@ -120,6 +120,7 @@ struct ChatView: View {
                 .font(.caption)
             }
             .buttonStyle(.bordered)
+            .help("Session settings")
 
             Button {
                 showingResetConfirm = true
@@ -139,13 +140,6 @@ struct ChatView: View {
             .fixedSize()
             .help("Export conversation")
             .disabled(visibleMessages.isEmpty)
-
-            Button {
-                showingConfig = true
-            } label: {
-                Image(systemName: "gearshape")
-            }
-            .help("Session settings")
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

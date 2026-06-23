@@ -103,7 +103,7 @@ struct MessageRow: View {
                     thinkingDisclosure
                 }
                 if !message.content.isEmpty {
-                    MarkdownView(text: message.content)
+                    MarkdownView(text: message.content, renderDiagrams: !isGenerating)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else if message.thinking.isEmpty {

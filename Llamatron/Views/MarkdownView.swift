@@ -6,6 +6,9 @@ import SwiftUI
 /// block comes from `Markdown.inlineAttributed`.
 struct MarkdownView: View {
     let text: String
+    /// When true, ` ```mermaid ` blocks render as diagrams. Disabled while a reply is
+    /// still streaming (the fence isn't closed yet), so they show as source until done.
+    var renderDiagrams: Bool = true
 
     var body: some View {
         let blocks = MarkdownParser.parse(text)
@@ -30,7 +33,11 @@ struct MarkdownView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
         case .codeBlock(let language, let code):
-            CodeBlockView(language: language, code: code)
+            if renderDiagrams, language?.lowercased() == "mermaid" {
+                MermaidView(source: code)
+            } else {
+                CodeBlockView(language: language, code: code)
+            }
 
         case .unorderedList(let items):
             listView(rows: items.map { (marker: "•", text: $0) })
@@ -48,6 +55,9 @@ struct MarkdownView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+        case .table(let headers, let rows):
+            MarkdownTableView(headers: headers, rows: rows)
 
         case .horizontalRule:
             Divider()
@@ -122,5 +132,48 @@ private struct CodeBlockView: View {
                 .strokeBorder(Color(nsColor: .separatorColor))
         )
         .onHover { hovering = $0 }
+    }
+}
+
+/// Renders a GFM pipe table as an aligned grid: a shaded header row and bordered
+/// cells. Cell text supports inline Markdown and wraps within its column.
+private struct MarkdownTableView: View {
+    let headers: [String]
+    let rows: [[String]]
+
+    var body: some View {
+        Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
+            GridRow {
+                ForEach(Array(headers.enumerated()), id: \.offset) { _, header in
+                    cell(header, isHeader: true)
+                }
+            }
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                GridRow {
+                    ForEach(Array(row.enumerated()), id: \.offset) { _, value in
+                        cell(value, isHeader: false)
+                    }
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(Color(nsColor: .separatorColor))
+        )
+    }
+
+    private func cell(_ text: String, isHeader: Bool) -> some View {
+        Text(Markdown.inlineAttributed(text))
+            .font(isHeader ? .body.weight(.semibold) : .body)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(isHeader ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear))
+            .overlay(
+                Rectangle()
+                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
+            )
     }
 }

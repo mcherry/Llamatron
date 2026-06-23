@@ -399,6 +399,13 @@ struct SessionConfigView: View {
             TextEditor(text: $session.systemPrompt)
                 .font(.body)
                 .frame(minHeight: 100)
+            HStack {
+                Spacer()
+                Text(systemPromptCostLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
             Text("Sent as the leading system message on every request in this session.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -411,6 +418,23 @@ struct SessionConfigView: View {
         } message: {
             Text("Save the current system prompt to your library to reuse it in other sessions.")
         }
+    }
+
+    /// Live token estimate for the system prompt, plus the share of the context window
+    /// it consumes (Ollama only — Apple Intelligence has no user-set context size here).
+    /// The window is exactly `contextSize`, so the percentage is only as approximate as
+    /// the token estimate itself.
+    private var systemPromptCostLabel: String {
+        let tokens = TokenEstimator.estimate(session.systemPrompt)
+        var label = "~\(tokens) tokens"
+        if session.backend == .ollama, session.contextSize > 0 {
+            let percent = Double(tokens) / Double(session.contextSize) * 100
+            let pctText = percent > 0 && percent < 0.1
+                ? "<0.1"
+                : String(format: "%.1f", percent)
+            label += " · ~\(pctText)% of context"
+        }
+        return label
     }
 
     private func saveCurrentPreset() {

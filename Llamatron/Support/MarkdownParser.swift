@@ -10,6 +10,7 @@ enum MarkdownBlock: Equatable {
     case unorderedList([String])
     case orderedList([String])
     case quote([String])
+    case table(headers: [String], rows: [[String]])
     case horizontalRule
 }
 
@@ -96,11 +97,33 @@ enum MarkdownParser {
                 continue
             }
 
+            // GFM pipe table: a header row followed by a `|---|---|` delimiter row.
+            if isTableStart(i, lines) {
+                let headers = splitTableRow(lines[i])
+                i += 2 // skip the header and delimiter rows
+                var rows: [[String]] = []
+                while i < lines.count {
+                    let t = lines[i].trimmingCharacters(in: .whitespaces)
+                    guard !t.isEmpty, t.contains("|") else { break }
+                    var cells = splitTableRow(lines[i])
+                    // Normalize each row to the header's column count.
+                    if cells.count < headers.count {
+                        cells += Array(repeating: "", count: headers.count - cells.count)
+                    } else if cells.count > headers.count {
+                        cells = Array(cells.prefix(headers.count))
+                    }
+                    rows.append(cells)
+                    i += 1
+                }
+                blocks.append(.table(headers: headers, rows: rows))
+                continue
+            }
+
             // Paragraph: gather consecutive lines until a blank line or a new block.
             var paragraph: [String] = []
             while i < lines.count {
                 let t = lines[i].trimmingCharacters(in: .whitespaces)
-                if startsBlock(t) { break }
+                if startsBlock(t) || isTableStart(i, lines) { break }
                 paragraph.append(lines[i])
                 i += 1
             }
@@ -162,5 +185,41 @@ enum MarkdownParser {
         return stripped.allSatisfy { $0 == "-" }
             || stripped.allSatisfy { $0 == "*" }
             || stripped.allSatisfy { $0 == "_" }
+    }
+
+    // MARK: - Tables
+
+    /// Whether the line at `index` begins a GFM pipe table: a row containing pipes
+    /// immediately followed by a delimiter row such as `|---|:--:|`.
+    private static func isTableStart(_ index: Int, _ lines: [String]) -> Bool {
+        guard index + 1 < lines.count else { return false }
+        let header = lines[index].trimmingCharacters(in: .whitespaces)
+        let delimiter = lines[index + 1].trimmingCharacters(in: .whitespaces)
+        return header.contains("|") && isTableDelimiter(delimiter)
+    }
+
+    /// A delimiter row: every cell is dashes with optional leading/trailing colons
+    /// (alignment markers), e.g. `---`, `:--`, `--:`, `:-:`.
+    private static func isTableDelimiter(_ line: String) -> Bool {
+        guard line.contains("|") || line.contains("-") else { return false }
+        let cells = splitTableRow(line)
+        guard !cells.isEmpty else { return false }
+        for cell in cells {
+            var body = cell.trimmingCharacters(in: .whitespaces)
+            guard !body.isEmpty else { return false }
+            if body.hasPrefix(":") { body.removeFirst() }
+            if body.hasSuffix(":") { body.removeLast() }
+            guard !body.isEmpty, body.allSatisfy({ $0 == "-" }) else { return false }
+        }
+        return true
+    }
+
+    /// Splits a table row into trimmed cells, dropping the optional outer pipes.
+    private static func splitTableRow(_ line: String) -> [String] {
+        var s = line.trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("|") { s.removeFirst() }
+        if s.hasSuffix("|") { s.removeLast() }
+        return s.components(separatedBy: "|")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
     }
 }
