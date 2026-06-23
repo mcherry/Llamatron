@@ -25,11 +25,19 @@ struct MermaidView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            if showingSource || failed {
+            if oversized || showingSource || failed {
                 if failed, let errorText {
                     Text(errorText)
                         .font(.caption)
                         .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.top, 6)
+                } else if oversized {
+                    Text("This diagram is unusually large (\(source.count) characters) and may be a runaway generation, so it isn’t rendered. The source is shown below.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 10)
@@ -60,14 +68,24 @@ struct MermaidView: View {
 
     private var headerLabel: String {
         if failed { return "mermaid · invalid diagram syntax" }
+        if oversized { return "mermaid · too large to render" }
         if autoCorrected { return "mermaid · auto-corrected" }
         return "mermaid"
     }
 
     private var headerColor: AnyShapeStyle {
         if failed { return AnyShapeStyle(.red) }
+        if oversized { return AnyShapeStyle(.orange) }
         if autoCorrected { return AnyShapeStyle(.orange) }
         return AnyShapeStyle(.secondary)
+    }
+
+    /// Guards against runaway model output: a pathologically large diagram is shown as
+    /// source rather than handed to the web view, where it could render slowly or hang
+    /// the UI. The threshold is far above any hand-authored diagram.
+    private var oversized: Bool {
+        source.count > 12_000
+            || source.split(separator: "\n", omittingEmptySubsequences: false).count > 400
     }
 
     private var header: some View {
@@ -77,7 +95,7 @@ struct MermaidView: View {
                 .foregroundStyle(headerColor)
                 .help(autoCorrected ? "The model’s diagram had invalid syntax (unquoted labels); Llamatron quoted them to render it. Toggle Source to see the original." : "")
             Spacer()
-            if !failed {
+            if !failed && !oversized {
                 Button(showingSource ? "Diagram" : "Source") {
                     showingSource.toggle()
                 }

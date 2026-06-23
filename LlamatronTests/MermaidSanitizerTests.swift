@@ -69,4 +69,49 @@ final class MermaidSanitizerTests: XCTestCase {
         XCTAssertEqual(MermaidSanitizer.repair(src),
                        "%%{init: {'theme':'dark'}}%%\ngraph TD\n A[\"x (y)\"] --> B")
     }
+
+    // MARK: - Edge labels
+
+    func testInlineEdgeLabelWithParensConvertedToPipe() {
+        // The exact failure the user hit: parentheses in an inline edge label.
+        let src = "graph TD\n F -- Ranged (Gun) --> G"
+        XCTAssertEqual(MermaidSanitizer.repair(src),
+                       "graph TD\n F -->|\"Ranged (Gun)\"| G")
+    }
+
+    func testPipeEdgeLabelWithParensQuoted() {
+        let src = "graph TD\n F -->|Ranged (Gun)| G"
+        XCTAssertEqual(MermaidSanitizer.repair(src),
+                       "graph TD\n F -->|\"Ranged (Gun)\"| G")
+    }
+
+    func testPipeEdgeLabelAlreadyQuotedUntouched() {
+        let src = "graph TD\n F -->|\"Ranged (Gun)\"| G"
+        XCTAssertEqual(MermaidSanitizer.repair(src), src)
+    }
+
+    func testInlineEdgeLabelWithoutBracketsUntouched() {
+        // No bracket characters -> valid as-is, leave the inline form alone.
+        let src = "graph TD\n A -- yes --> B"
+        XCTAssertEqual(MermaidSanitizer.repair(src), src)
+    }
+
+    func testThickInlineEdgeLabelWithParens() {
+        let src = "graph TD\n A == Mass (kg) ==> B"
+        XCTAssertEqual(MermaidSanitizer.repair(src),
+                       "graph TD\n A ==>|\"Mass (kg)\"| B")
+    }
+
+    func testEdgeLabelAndNodeLabelTogether() {
+        let src = "graph TD\n F -- Ranged (Gun) --> G[Aim (head)]"
+        XCTAssertEqual(MermaidSanitizer.repair(src),
+                       "graph TD\n F -->|\"Ranged (Gun)\"| G[\"Aim (head)\"]")
+    }
+
+    func testPlainArrowNotMisread() {
+        // A bare arrow with bracket node labels must not be treated as an edge label.
+        let src = "graph TD\n A[x (1)] --> B[y (2)]"
+        XCTAssertEqual(MermaidSanitizer.repair(src),
+                       "graph TD\n A[\"x (1)\"] --> B[\"y (2)\"]")
+    }
 }

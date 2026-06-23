@@ -29,6 +29,7 @@ enum MermaidSanitizer {
         ("[", ["]"]),       // rectangle
         ("(", [")"]),       // round
         ("{", ["}"]),       // rhombus
+        ("|", ["|"]),       // pipe edge label: A -->|label| B
     ]
 
     /// Returns `source` with flowchart node labels quoted where required. Non-flowchart
@@ -47,7 +48,12 @@ enum MermaidSanitizer {
 
     /// Quotes node labels on a single flowchart line.
     private static func repairLine(_ line: String) -> String {
-        let chars = Array(line)
+        // First normalize inline edge labels (A-- text --> B) to the pipe form with a
+        // quoted label (A-->|"text"| B), which is Mermaid's reliable way to carry
+        // punctuation. Then the shape scanner quotes node labels and pipe-form edge
+        // labels (the "|" shape). Doing the inline conversion first keeps the scanner
+        // from mis-reading parentheses inside an edge label as a round node.
+        let chars = Array(convertInlineEdgeLabels(line))
         let n = chars.count
         var result = ""
         result.reserveCapacity(n + 16)
@@ -65,6 +71,36 @@ enum MermaidSanitizer {
             }
             result.append(chars[i])
             i += 1
+        }
+        return result
+    }
+
+    /// Matches an inline edge label: `<startOp> text <endOp>` where the link operators
+    /// have whitespace around the label text. Captures the text and the end operator.
+    private static let inlineEdgeRegex: NSRegularExpression = {
+        let pattern = #"(?:--|==)[ \t]+(\S.*?)[ \t]+(-->|---|==>|===|--[xo]|==[xo])"#
+        // swiftlint:disable:next force_try
+        return try! NSRegularExpression(pattern: pattern)
+    }()
+
+    /// Rewrites inline edge labels that contain bracket characters into the pipe form
+    /// with a quoted label: `A -- foo (bar) --> B` becomes `A -->|"foo (bar)"| B`. Other
+    /// lines (and labels without brackets) are returned unchanged.
+    private static func convertInlineEdgeLabels(_ line: String) -> String {
+        let ns = line as NSString
+        let matches = inlineEdgeRegex.matches(in: line, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return line }
+
+        var result = line
+        // Apply right-to-left so earlier match ranges stay valid as we splice.
+        for match in matches.reversed() {
+            let text = ns.substring(with: match.range(at: 1))
+            guard text.contains(where: { triggers.contains($0) }) else { continue }
+            let endOp = ns.substring(with: match.range(at: 2))
+            let replacement = "\(endOp)|\(quoteIfNeeded(text))|"
+            if let range = Range(match.range, in: result) {
+                result.replaceSubrange(range, with: replacement)
+            }
         }
         return result
     }

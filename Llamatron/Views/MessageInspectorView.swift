@@ -29,11 +29,17 @@ struct MessageInspectorView: View {
                     if !message.retrievedChunks.isEmpty {
                         retrievalSection
                     }
-                    if let payload = message.requestPayload {
-                        requestSection(payload)
-                    }
                 }
                 .padding()
+            }
+            // Hug the metadata content so the payload below can fill the rest of the
+            // panel instead of leaving a gap.
+            .fixedSize(horizontal: false, vertical: true)
+
+            if let payload = message.requestPayload {
+                Divider()
+                requestSection(payload)
+                    .padding()
             }
         }
         .frame(width: 560, height: 620)
@@ -141,35 +147,38 @@ struct MessageInspectorView: View {
     // MARK: - Request
 
     private func requestSection(_ payload: String) -> some View {
-        section("Request Payload", systemImage: "arrow.up.forward.square") {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("The exact request sent for this turn.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button {
-                        Pasteboard.copy(payload)
-                    } label: {
-                        Label("Copy", systemImage: "doc.on.doc")
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
+        // Not built on `section(...)`: this one fills the remaining panel height, so it
+        // owns a flexible VStack instead of the content-hugging helper.
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Request Payload", systemImage: "arrow.up.forward.square")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Button {
+                    Pasteboard.copy(payload)
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
                 }
-                ScrollView([.vertical, .horizontal], showsIndicators: true) {
-                    Text(payload)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                }
-                .frame(maxHeight: 240)
-                .background(Color(nsColor: .textBackgroundColor),
-                            in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color(nsColor: .separatorColor)))
+                .buttonStyle(.borderless)
+                .font(.caption)
             }
+            Text("The exact request sent for this turn.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ScrollView([.vertical, .horizontal], showsIndicators: true) {
+                Text(payload)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor),
+                        in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color(nsColor: .separatorColor)))
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     // MARK: - Helpers
