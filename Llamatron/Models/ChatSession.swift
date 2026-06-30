@@ -60,6 +60,11 @@ final class ChatSession {
     var imageSeed: Int?
     var imageVAE: String = ""
 
+    // Text-to-speech (per chat). Voices/speed are app-level (Settings).
+    var ttsEnabled: Bool = false
+    var ttsEngineRaw: String = TTSEngine.apple.rawValue
+    var ttsAutoSpeak: Bool = false
+
     @Relationship(deleteRule: .cascade, inverse: \ChatMessage.session)
     var messages: [ChatMessage] = []
 
@@ -98,6 +103,12 @@ final class ChatSession {
     var historyMode: HistoryMode {
         get { HistoryMode(rawValue: historyModeRaw) ?? .full }
         set { historyModeRaw = newValue.rawValue }
+    }
+
+    /// Typed accessor over `ttsEngineRaw`.
+    var ttsEngine: TTSEngine {
+        get { TTSEngine(rawValue: ttsEngineRaw) ?? .apple }
+        set { ttsEngineRaw = newValue.rawValue }
     }
 
     /// The session's sampling parameters as a plain `Sendable` value for requests.

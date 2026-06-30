@@ -76,6 +76,7 @@ struct SessionConfigView: View {
                     historySection
                     contextStrategySection
                     systemPromptSection
+                    speechSection
                 }
             }
             .formStyle(.grouped)
@@ -399,6 +400,20 @@ struct SessionConfigView: View {
             imageLoadError = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach the image server."
         }
         imageTesting = false
+    }
+
+    private var speechSection: some View {
+        Section("Speech") {
+            Toggle("Read replies aloud", isOn: $session.ttsEnabled)
+            if session.ttsEnabled {
+                Picker("Engine", selection: $session.ttsEngine) {
+                    ForEach(TTSEngine.allCases) { Text($0.label).tag($0) }
+                }
+                Toggle("Speak automatically when a reply finishes", isOn: $session.ttsAutoSpeak)
+                Text("Voices and speed are set in Settings → Text-to-Speech.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var historySection: some View {

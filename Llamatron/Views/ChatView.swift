@@ -15,8 +15,13 @@ struct ChatView: View {
     @AppStorage(SettingsKey.diagramGuidance) private var diagramGuidance = false
     @AppStorage(SettingsKey.imageServerURL) private var imageServerURL = SettingsDefault.imageServerURL
     @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
+    @AppStorage(SettingsKey.ttsAppleVoice) private var ttsAppleVoice = ""
+    @AppStorage(SettingsKey.ttsServerURL) private var ttsServerURL = SettingsDefault.ttsServerURL
+    @AppStorage(SettingsKey.ttsVoice) private var ttsVoice = ""
+    @AppStorage(SettingsKey.ttsSpeed) private var ttsSpeed = SettingsDefault.ttsSpeed
 
     @State private var viewModel = ChatViewModel()
+    @State private var speech = SpeechController()
     @State private var draft = ""
     @State private var showingConfig = false
     @State private var showingImporter = false
@@ -92,6 +97,7 @@ struct ChatView: View {
             return true
         }
         .task(id: serverURL) { await loadVisionCapabilities() }
+        .onDisappear { speech.stop() }
         .confirmationDialog("Start a fresh chat?",
                             isPresented: $showingResetConfirm,
                             titleVisibility: .visible) {
@@ -172,7 +178,10 @@ struct ChatView: View {
                         emptyState
                     } else {
                         ForEach(visibleMessages) { message in
-                            MessageRow(message: message, isGenerating: isGenerating(message))
+                            MessageRow(message: message,
+                                       isGenerating: isGenerating(message),
+                                       isSpeaking: speech.speakingMessageID == message.id,
+                                       onToggleSpeak: speakEnabled(message) ? { toggleSpeak(message) } : nil)
                                 .id(message.id)
                         }
                     }
@@ -371,6 +380,21 @@ struct ChatView: View {
                        imageServerURL: imageServerURL,
                        imageBackendKind: imageBackendKind,
                        modelContext: modelContext)
+    }
+
+    /// Whether a per-message "read aloud" button should appear: TTS is on for this chat
+    /// and the message is a non-empty assistant reply.
+    private func speakEnabled(_ message: ChatMessage) -> Bool {
+        session.ttsEnabled && message.role == .assistant && !message.content.isEmpty
+    }
+
+    private func toggleSpeak(_ message: ChatMessage) {
+        let config = SpeechController.Config(engine: session.ttsEngine,
+                                             appleVoice: ttsAppleVoice,
+                                             serverURL: ttsServerURL,
+                                             serverVoice: ttsVoice,
+                                             speed: ttsSpeed)
+        speech.toggle(messageID: message.id, text: message.content, config: config)
     }
 
     private enum ExportFormat { case markdown, json }

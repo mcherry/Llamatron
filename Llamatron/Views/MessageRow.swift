@@ -10,6 +10,10 @@ struct MessageRow: View {
     /// True only for the assistant reply that is currently streaming. While true the
     /// caption (timestamp + duration) is hidden, since the reply isn't finished yet.
     var isGenerating: Bool = false
+    /// True when this message is currently being spoken (text-to-speech).
+    var isSpeaking: Bool = false
+    /// When set, a speaker button toggles reading this reply aloud.
+    var onToggleSpeak: (() -> Void)?
     @State private var hovering = false
     @State private var thinkingExpanded = false
     @State private var showingInspector = false
@@ -62,12 +66,28 @@ struct MessageRow: View {
                 .foregroundStyle(.secondary)
             if !isUser {
                 copyButton
+                if onToggleSpeak != nil {
+                    speakButton
+                }
                 if message.hasInspectorData {
                     inspectButton
                 }
             }
         }
         .padding(.horizontal, 4)
+    }
+
+    private var speakButton: some View {
+        Button {
+            onToggleSpeak?()
+        } label: {
+            Image(systemName: isSpeaking ? "stop.circle" : "speaker.wave.2")
+                .font(.caption2)
+        }
+        .buttonStyle(.borderless)
+        .help(isSpeaking ? "Stop" : "Read aloud")
+        .opacity(hovering || isSpeaking ? 1 : 0)
+        .allowsHitTesting(hovering || isSpeaking)
     }
 
     private var inspectButton: some View {

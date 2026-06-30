@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 @testable import Llamatron
 
 final class TTSTests: XCTestCase {
@@ -33,5 +34,24 @@ final class TTSTests: XCTestCase {
         XCTAssertEqual(TTSEngine(rawValue: "apple"), .apple)
         XCTAssertEqual(TTSEngine(rawValue: "server"), .server)
         XCTAssertEqual(TTSEngine.allCases.count, 2)
+    }
+
+    func testTextForSpeechStripsMarkdown() {
+        let md = "# Title\n\nHere is `code` and **bold** and a [link](http://x).\n\n```\ncode block\n```\n- item"
+        let plain = TextForSpeech.plain(md)
+        XCTAssertFalse(plain.contains("#"))
+        XCTAssertFalse(plain.contains("`"))
+        XCTAssertFalse(plain.contains("*"))
+        XCTAssertFalse(plain.contains("code block"))   // fenced block removed
+        XCTAssertFalse(plain.contains("http://x"))      // url dropped
+        XCTAssertTrue(plain.contains("Title"))
+        XCTAssertTrue(plain.contains("link"))           // link text kept
+        XCTAssertTrue(plain.contains("item"))
+    }
+
+    func testAppleRateClampsAroundDefault() {
+        XCTAssertEqual(SpeechController.appleRate(for: 1.0), AVSpeechUtteranceDefaultSpeechRate, accuracy: 0.0001)
+        XCTAssertLessThanOrEqual(SpeechController.appleRate(for: 5.0), AVSpeechUtteranceMaximumSpeechRate)
+        XCTAssertGreaterThanOrEqual(SpeechController.appleRate(for: 0.01), AVSpeechUtteranceMinimumSpeechRate)
     }
 }
