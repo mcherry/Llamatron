@@ -17,6 +17,9 @@ struct Composer: View {
     var onMic: (() -> Void)?
     /// True while dictation is actively transcribing, for the mic button's state.
     var isDictating: Bool = false
+    /// True when dictation previously failed (e.g. Dictation is off); the mic shows a
+    /// disabled look and explains on click instead of trying again.
+    var dictationUnavailable: Bool = false
 
     @AppStorage(SettingsKey.composerHeight) private var storedHeight = SettingsDefault.composerHeight
     /// Live height while a resize drag is in progress; `nil` when not dragging.
@@ -157,13 +160,31 @@ struct Composer: View {
         Button {
             onMic?()
         } label: {
-            Image(systemName: isDictating ? "mic.fill" : "mic")
+            Image(systemName: micSymbol)
                 .font(.title3)
-                .foregroundStyle(isDictating ? Color.red : .secondary)
+                .foregroundStyle(micColor)
                 .symbolEffect(.pulse, isActive: isDictating)
         }
         .buttonStyle(.plain)
-        .help(isDictating ? "Stop dictation" : "Dictate a message")
+        .help(micHelp)
+    }
+
+    private var micSymbol: String {
+        if isDictating { return "mic.fill" }
+        if dictationUnavailable { return "mic.slash" }
+        return "mic"
+    }
+
+    private var micColor: Color {
+        if isDictating { return .red }
+        if dictationUnavailable { return .orange }
+        return .secondary
+    }
+
+    private var micHelp: String {
+        if isDictating { return "Stop dictation" }
+        if dictationUnavailable { return "Speech-to-text needs Dictation on — click for details" }
+        return "Dictate a message"
     }
 
     @ViewBuilder

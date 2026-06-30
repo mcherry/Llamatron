@@ -170,7 +170,8 @@ struct ChatView: View {
                  onAddWebSource: { showingAddWebSource = true },
                  onWebSearch: { showingWebSearch = true },
                  onMic: micAction,
-                 isDictating: dictation.isListening)
+                 isDictating: dictation.isListening,
+                 dictationUnavailable: dictation.isUnavailable)
     }
 
     /// The mic toggle, or `nil` when speech recognition isn't available.
