@@ -32,8 +32,9 @@ final class DictationController {
     var isSupported: Bool { recognizer != nil }
 
     private let recognizer = SFSpeechRecognizer()
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var sink: AudioSink?
     private var task: SFSpeechRecognitionTask?
     private var silenceTask: Task<Void, Never>?
     private var starting = false
@@ -43,7 +44,9 @@ final class DictationController {
         if isListening || starting { stop() } else { start() }
     }
 
-    /// Requests permission (first run) and begins streaming microphone audio.
+    /// Requests permission (first run) and begins streaming microphone audio. All work
+    /// stays on the main actor — the engine and recognizer are set up from one consistent
+    /// queue, which the audio frameworks expect.
     func start() {
         guard !isListening, !starting else { return }
         guard let recognizer, recognizer.isAvailable else {
@@ -53,31 +56,48 @@ final class DictationController {
         starting = true
         transcript = ""
         errorMessage = nil
-        SFSpeechRecognizer.requestAuthorization { status in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                guard status == .authorized else {
-                    self.starting = false
-                    self.errorMessage = "Allow speech recognition in System Settings ▸ Privacy to dictate."
-                    return
-                }
-                AVCaptureDevice.requestAccess(for: .audio) { granted in
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
-                        guard granted else {
-                            self.starting = false
-                            self.errorMessage = "Allow microphone access in System Settings ▸ Privacy to dictate."
-                            return
-                        }
-                        self.beginSession()
-                    }
-                }
+        Task { @MainActor in
+            let speechStatus = await Self.requestSpeechAuthorization()
+            guard !Task.isCancelled, starting else { return }
+            guard speechStatus == .authorized else {
+                starting = false
+                errorMessage = "Allow speech recognition in System Settings ▸ Privacy & Security to dictate."
+                return
+            }
+            let micGranted = await AVCaptureDevice.requestAccess(for: .audio)
+            guard !Task.isCancelled, starting else { return }
+            guard micGranted else {
+                starting = false
+                errorMessage = "Allow microphone access in System Settings ▸ Privacy & Security to dictate."
+                return
+            }
+            beginSession()
+        }
+    }
+
+    /// Async wrapper over the callback-based speech authorization request.
+    private static func requestSpeechAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
+        await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { status in
+                continuation.resume(returning: status)
             }
         }
     }
 
     private func beginSession() {
         guard let recognizer else { starting = false; return }
+        // A fresh engine each session avoids stale CoreAudio state from a prior run.
+        engine = AVAudioEngine()
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        // On the first run the HAL may not be ready the instant permission is granted;
+        // a zero-channel/zero-rate format would crash `installTap`/`start`.
+        guard format.channelCount > 0, format.sampleRate > 0 else {
+            starting = false
+            errorMessage = "The microphone isn't ready yet. Try the mic again."
+            return
+        }
+
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         // Keep audio on-device when the Mac supports it (privacy + offline).
@@ -85,12 +105,24 @@ final class DictationController {
             request.requiresOnDeviceRecognition = true
         }
         self.request = request
+        let sink = AudioSink(request)
+        self.sink = sink
 
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
+        // Start recognition before wiring the microphone, matching Apple's pattern.
+        task = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            // Extract only Sendable values before hopping to the main actor.
+            let text = result?.bestTranscription.formattedString
+            let isFinal = result?.isFinal ?? false
+            let failed = error != nil
+            Task { @MainActor [weak self] in
+                self?.handle(text: text, isFinal: isFinal, failed: failed)
+            }
+        }
+
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-            // Runs on the audio thread; `append` is safe to call there.
-            request.append(buffer)
+            // Runs on the audio thread; the sink guards against appending after the
+            // request has been ended (which would crash).
+            sink.append(buffer)
         }
         engine.prepare()
         do {
@@ -100,16 +132,6 @@ final class DictationController {
             errorMessage = error.localizedDescription
             teardown()
             return
-        }
-
-        task = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            // Extract only Sendable values before hopping to the main actor.
-            let text = result?.bestTranscription.formattedString
-            let isFinal = result?.isFinal ?? false
-            let failed = error != nil
-            Task { @MainActor [weak self] in
-                self?.handle(text: text, isFinal: isFinal, failed: failed)
-            }
         }
 
         starting = false
@@ -130,6 +152,11 @@ final class DictationController {
             }
             stop()
         } else if failed {
+            // Surface why only if nothing was transcribed (the common cause is that
+            // Dictation is turned off system-wide, which disables recognition).
+            if transcript.isEmpty {
+                errorMessage = "Couldn't start speech recognition. Turn on Dictation in System Settings ▸ Keyboard, then try again."
+            }
             stop()
         }
     }
@@ -165,7 +192,8 @@ final class DictationController {
     private func teardown() {
         if engine.isRunning { engine.stop() }
         engine.inputNode.removeTap(onBus: 0)
-        request?.endAudio()
+        sink?.finish()
+        sink = nil
         request = nil
     }
 
@@ -179,5 +207,26 @@ final class DictationController {
         if trimmedBase.isEmpty { return transcript }
         if transcript.isEmpty { return trimmedBase }
         return trimmedBase + " " + transcript
+    }
+}
+
+/// A thread-safe bridge from the real-time audio tap to the recognition request. The tap
+/// runs on the audio I/O thread while teardown happens on the main actor; the lock ensures
+/// a buffer is never appended after `finish()` has ended the request (which would crash).
+private final class AudioSink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+
+    init(_ request: SFSpeechAudioBufferRecognitionRequest) { self.request = request }
+
+    func append(_ buffer: AVAudioPCMBuffer) {
+        lock.lock(); defer { lock.unlock() }
+        request?.append(buffer)
+    }
+
+    func finish() {
+        lock.lock(); defer { lock.unlock() }
+        request?.endAudio()
+        request = nil
     }
 }
