@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// One turn in the transcript. User turns are right-aligned and hug their content;
 /// assistant turns are left-aligned and render Markdown. Each row has a caption with
@@ -195,13 +196,38 @@ struct MessageRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// A generated image reply, scaled to fit within the bubble.
+    /// A generated image reply with hover actions to save or copy it.
     private func generatedImage(_ nsImage: NSImage) -> some View {
-        Image(nsImage: nsImage)
-            .resizable()
-            .scaledToFit()
-            .frame(maxWidth: 512, maxHeight: 512)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+        VStack(alignment: .leading, spacing: 4) {
+            Image(nsImage: nsImage)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 512, maxHeight: 512)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            HStack(spacing: 12) {
+                Button { saveGeneratedImage() } label: {
+                    Label("Save", systemImage: "square.and.arrow.down")
+                }
+                Button { Pasteboard.copy(image: nsImage) } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .opacity(hovering ? 1 : 0)
+            .allowsHitTesting(hovering)
+        }
+    }
+
+    /// Writes the generated PNG to a user-chosen location.
+    private func saveGeneratedImage() {
+        guard let data = message.generatedImageData else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType.png]
+        panel.nameFieldStringValue = "image.png"
+        if panel.runModal() == .OK, let url = panel.url {
+            try? data.write(to: url)
+        }
     }
 
     private var captionText: String {

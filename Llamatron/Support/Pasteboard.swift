@@ -6,4 +6,10 @@ enum Pasteboard {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
+
+    /// Puts an image on the clipboard (e.g. a generated image reply).
+    static func copy(image: NSImage) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([image])
+    }
 }
