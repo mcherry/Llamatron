@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 import UniformTypeIdentifiers
+import AppKit
 
 /// The chat detail pane: a header strip with the session's model/context, the
 /// streaming transcript, attachment chips, an inline error banner, and the composer.
@@ -105,6 +106,12 @@ struct ChatView: View {
             guard let last = visibleMessages.last, last.role == .assistant, !last.content.isEmpty else { return }
             speech.speak(messageID: last.id, text: last.content, config: ttsConfig)
         }
+        .onChange(of: speech.saveError) { _, message in
+            if let message {
+                viewModel.errorMessage = message
+                speech.saveError = nil
+            }
+        }
         .confirmationDialog("Start a fresh chat?",
                             isPresented: $showingResetConfirm,
                             titleVisibility: .visible) {
@@ -188,7 +195,9 @@ struct ChatView: View {
                             MessageRow(message: message,
                                        isGenerating: isGenerating(message),
                                        isSpeaking: speech.speakingMessageID == message.id,
-                                       onToggleSpeak: speakEnabled(message) ? { toggleSpeak(message) } : nil)
+                                       onToggleSpeak: speakEnabled(message) ? { toggleSpeak(message) } : nil,
+                                       isSaving: speech.savingMessageID == message.id,
+                                       onSaveAudio: speakEnabled(message) ? { saveAudio(message) } : nil)
                                 .id(message.id)
                         }
                     }
@@ -405,6 +414,14 @@ struct ChatView: View {
 
     private func toggleSpeak(_ message: ChatMessage) {
         speech.toggle(messageID: message.id, text: message.content, config: ttsConfig)
+    }
+
+    private func saveAudio(_ message: ChatMessage) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "m4a") ?? .audio]
+        panel.nameFieldStringValue = "reply.m4a"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        speech.saveAudio(messageID: message.id, text: message.content, config: ttsConfig, to: url)
     }
 
     private enum ExportFormat { case markdown, json }

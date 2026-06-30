@@ -14,6 +14,10 @@ struct MessageRow: View {
     var isSpeaking: Bool = false
     /// When set, a speaker button toggles reading this reply aloud.
     var onToggleSpeak: (() -> Void)?
+    /// True while this reply's audio is being saved.
+    var isSaving: Bool = false
+    /// When set, a button saves this reply's audio to an `.m4a` file.
+    var onSaveAudio: (() -> Void)?
     @State private var hovering = false
     @State private var thinkingExpanded = false
     @State private var showingInspector = false
@@ -69,6 +73,9 @@ struct MessageRow: View {
                 if onToggleSpeak != nil {
                     speakButton
                 }
+                if onSaveAudio != nil {
+                    saveAudioButton
+                }
                 if message.hasInspectorData {
                     inspectButton
                 }
@@ -88,6 +95,24 @@ struct MessageRow: View {
         .help(isSpeaking ? "Stop" : "Read aloud")
         .opacity(hovering || isSpeaking ? 1 : 0)
         .allowsHitTesting(hovering || isSpeaking)
+    }
+
+    @ViewBuilder
+    private var saveAudioButton: some View {
+        if isSaving {
+            ProgressView().controlSize(.mini)
+        } else {
+            Button {
+                onSaveAudio?()
+            } label: {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.caption2)
+            }
+            .buttonStyle(.borderless)
+            .help("Save audio (.m4a)")
+            .opacity(hovering ? 1 : 0)
+            .allowsHitTesting(hovering)
+        }
     }
 
     private var inspectButton: some View {
