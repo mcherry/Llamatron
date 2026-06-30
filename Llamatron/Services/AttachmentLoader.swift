@@ -85,4 +85,26 @@ enum AttachmentLoader {
         }
         return attachment
     }
+
+    /// Creates a text attachment from in-memory text (a pasted note or a fetched web page)
+    /// and chunks it for retrieval — the same path file imports use, so the content actually
+    /// reaches the model's context. Returns the inserted attachment.
+    @MainActor
+    @discardableResult
+    static func makeTextAttachment(name: String,
+                                   text: String,
+                                   into session: ChatSession,
+                                   modelContext: ModelContext) -> Attachment {
+        let attachment = Attachment(fileName: name, fullText: text)
+        attachment.session = session
+        modelContext.insert(attachment)
+
+        let chunker = TextChunker()
+        for (index, chunkText) in chunker.chunk(text).enumerated() {
+            let chunk = DocumentChunk(ordinal: index, text: chunkText)
+            chunk.attachment = attachment
+            modelContext.insert(chunk)
+        }
+        return attachment
+    }
 }

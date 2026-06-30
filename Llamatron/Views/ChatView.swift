@@ -18,6 +18,8 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var showingConfig = false
     @State private var showingImporter = false
+    @State private var showingAddWebSource = false
+    @State private var showingWebSearch = false
     @State private var showingResetConfirm = false
     @State private var exportDocument: TextExportDocument?
     @State private var exportContentType: UTType = .plainText
@@ -59,12 +61,24 @@ struct ChatView: View {
                      canSend: canSend,
                      onSend: send,
                      onStop: viewModel.stop,
-                     onAttach: { showingImporter = true })
+                     onAttach: { showingImporter = true },
+                     onAddWebSource: { showingAddWebSource = true },
+                     onWebSearch: { showingWebSearch = true })
             Divider()
             StatusBarView(session: session, isStreaming: viewModel.isStreaming)
         }
         .sheet(isPresented: $showingConfig) {
             SessionConfigView(session: session, serverURL: serverURL)
+        }
+        .sheet(isPresented: $showingAddWebSource) {
+            AddWebSourceView { title, content in
+                addWebSource(title: title, content: content)
+            }
+        }
+        .sheet(isPresented: $showingWebSearch) {
+            WebSearchView { title, content in
+                addWebSource(title: title, content: content)
+            }
         }
         .fileImporter(isPresented: $showingImporter,
                       allowedContentTypes: AttachmentLoader.importTypes,
@@ -261,13 +275,15 @@ struct ChatView: View {
     }
 
     private func contextInfoBar(_ info: ContextInfo) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .foregroundStyle(.secondary)
-            Text(info.note ?? info.summary)
+        let isWarning = info.warning != nil
+        return HStack(spacing: 6) {
+            Image(systemName: isWarning ? "exclamationmark.triangle.fill" : "doc.text.magnifyingglass")
+                .foregroundStyle(isWarning ? .orange : .secondary)
+            Text(info.warning ?? info.note ?? info.summary)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isWarning ? .primary : .secondary)
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer()
             Text(info.strategy.label)
                 .font(.caption2.weight(.medium))
@@ -277,7 +293,7 @@ struct ChatView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.blue.opacity(0.08))
+        .background((isWarning ? Color.orange : Color.blue).opacity(isWarning ? 0.12 : 0.08))
     }
 
     private var attachmentsBar: some View {
@@ -431,5 +447,15 @@ struct ChatView: View {
                 viewModel.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    /// Stores a fetched web page or pasted note as a retrievable text attachment, so it
+    /// rides the existing retrieval pipeline like any other attached file.
+    private func addWebSource(title: String, content: String) {
+        AttachmentLoader.makeTextAttachment(name: title.isEmpty ? "Source" : title,
+                                            text: content,
+                                            into: session,
+                                            modelContext: modelContext)
+        session.updatedAt = .now
     }
 }

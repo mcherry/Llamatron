@@ -246,7 +246,8 @@ struct OllamaClient: Sendable, LLMBackend {
             promptTokens: parsed.promptEvalCount,
             evalTokens: parsed.evalCount,
             evalDurationNanos: parsed.evalDuration,
-            thinkingDelta: parsed.message?.thinking ?? ""
+            thinkingDelta: parsed.message?.thinking ?? "",
+            doneReason: parsed.doneReason
         )
     }
 }
@@ -292,6 +293,7 @@ private struct PullLine: Decodable {
 private struct StreamLine: Decodable {
     let message: Message?
     let done: Bool?
+    let doneReason: String?
     let error: String?
     let promptEvalCount: Int?
     let evalCount: Int?

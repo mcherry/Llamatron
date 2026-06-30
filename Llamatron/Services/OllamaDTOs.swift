@@ -228,4 +228,7 @@ struct ChatChunk: Sendable {
     /// Incremental reasoning text from thinking models (Ollama's `message.thinking`).
     /// Accumulated separately from the answer.
     var thinkingDelta: String = ""
+    /// Ollama's reason for finishing (`done_reason`): "stop" (natural end), "length"
+    /// (hit the context/token limit, so the reply was cut off), etc. nil until `done`.
+    var doneReason: String? = nil
 }

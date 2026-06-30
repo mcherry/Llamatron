@@ -24,6 +24,18 @@ final class OllamaClientTests: XCTestCase {
         XCTAssertEqual(chunk.evalDurationNanos, 1_000_000_000)
     }
 
+    func testParseDoneReasonLength() throws {
+        let line = #"{"message":{"role":"assistant","content":""},"done":true,"done_reason":"length","eval_count":34}"#
+        let chunk = try XCTUnwrap(OllamaClient.parseLine(line))
+        XCTAssertTrue(chunk.done)
+        XCTAssertEqual(chunk.doneReason, "length")
+    }
+
+    func testParseDoneReasonAbsentIsNil() throws {
+        let chunk = try XCTUnwrap(OllamaClient.parseLine(#"{"message":{"content":"Hi"},"done":false}"#))
+        XCTAssertNil(chunk.doneReason)
+    }
+
     func testParseBlankLineReturnsNil() throws {
         XCTAssertNil(try OllamaClient.parseLine("   "))
         XCTAssertNil(try OllamaClient.parseLine("\n"))

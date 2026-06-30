@@ -110,6 +110,9 @@ struct MessageRow: View {
                     ProgressView()
                         .controlSize(.small)
                 }
+                if message.wasTruncated && !isGenerating {
+                    truncationNotice
+                }
             }
             .onAppear {
                 // Auto-expand reasoning while it streams in; leave finished replies
@@ -117,6 +120,16 @@ struct MessageRow: View {
                 thinkingExpanded = isGenerating && message.content.isEmpty
             }
         }
+    }
+
+    /// Shown when the model stopped because it hit the context window (`done_reason:
+    /// length`) rather than finishing — the reply is incomplete.
+    private var truncationNotice: some View {
+        Label("Reply cut off — it reached the end of the context window. Increase the context size or use a smaller source.",
+              systemImage: "exclamationmark.triangle.fill")
+            .font(.caption2)
+            .foregroundStyle(.orange)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Collapsible reasoning trace from thinking models.

@@ -11,6 +11,8 @@ struct Composer: View {
     let onSend: () -> Void
     let onStop: () -> Void
     var onAttach: (() -> Void)?
+    var onAddWebSource: (() -> Void)?
+    var onWebSearch: (() -> Void)?
 
     @AppStorage(SettingsKey.composerHeight) private var storedHeight = SettingsDefault.composerHeight
     /// Live height while a resize drag is in progress; `nil` when not dragging.
@@ -95,6 +97,9 @@ struct Composer: View {
                 if onAttach != nil {
                     attachButton
                 }
+                if onAddWebSource != nil || onWebSearch != nil {
+                    webButton
+                }
                 Spacer()
                 sendStopButton
             }
@@ -112,6 +117,33 @@ struct Composer: View {
         }
         .buttonStyle(.plain)
         .help("Attach a file for context")
+    }
+
+    private var webButton: some View {
+        Menu {
+            if let onAddWebSource {
+                Button {
+                    onAddWebSource()
+                } label: {
+                    Label("Add Web Page or Text…", systemImage: "doc.text.magnifyingglass")
+                }
+            }
+            if let onWebSearch {
+                Button {
+                    onWebSearch()
+                } label: {
+                    Label("Search the Web…", systemImage: "magnifyingglass")
+                }
+            }
+        } label: {
+            Image(systemName: "globe")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Add web content for context")
     }
 
     @ViewBuilder

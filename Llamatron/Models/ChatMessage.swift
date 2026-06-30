@@ -42,6 +42,10 @@ final class ChatMessage {
     /// the description it generated (preprocessor pipeline), or a note that the image
     /// went natively to the primary model. `nil` when no image was involved.
     var visionNote: String?
+    /// True when the model stopped because it hit the context window (`done_reason:
+    /// length`) rather than finishing — i.e. the reply was cut off. Drives an inline
+    /// "reply cut off" notice. Always false for non-Ollama backends and user turns.
+    var wasTruncated: Bool = false
 
     /// Inverse side of `ChatSession.messages`.
     var session: ChatSession?

@@ -16,9 +16,10 @@ final class ContextStrategyTests: XCTestCase {
 
     func testBudgetReservesForResponseAndInputs() {
         let budget = ContextBudget(contextSize: 8192, systemTokens: 100, historyTokens: 200, userTokens: 50)
-        // reserve = clamp(8192/4=2048) = 2048; used = 100+200+50+2048 = 2398
+        // reserve = clamp(8192/4 = 2048) = 2048; used = 100+200+50+2048 = 2398; free = 5794;
+        // available fills only safetyFraction (0.75) of free = floor(5794 * 0.75) = 4345.
         XCTAssertEqual(budget.responseReserve, 2048)
-        XCTAssertEqual(budget.availableForContext, 8192 - 2398)
+        XCTAssertEqual(budget.availableForContext, 4345)
     }
 
     func testBudgetNeverNegative() {
@@ -27,8 +28,27 @@ final class ContextStrategyTests: XCTestCase {
     }
 
     func testBudgetResponseReserveBounds() {
-        XCTAssertEqual(ContextBudget(contextSize: 1000, systemTokens: 0, historyTokens: 0, userTokens: 0).responseReserve, 512)
-        XCTAssertEqual(ContextBudget(contextSize: 100000, systemTokens: 0, historyTokens: 0, userTokens: 0).responseReserve, 2048)
+        XCTAssertEqual(ContextBudget(contextSize: 1000, systemTokens: 0, historyTokens: 0, userTokens: 0).responseReserve, 1024)
+        XCTAssertEqual(ContextBudget(contextSize: 100000, systemTokens: 0, historyTokens: 0, userTokens: 0).responseReserve, 8192)
+    }
+
+    func testBudgetReservesFullCapForReasoningOnLargeWindow() {
+        // A 32K window reserves the full cap so a reasoning model's thinking + answer fit.
+        let budget = ContextBudget(contextSize: 32768, systemTokens: 0, historyTokens: 0, userTokens: 0)
+        XCTAssertEqual(budget.responseReserve, 8192)
+        // free = 32768 - 8192 = 24576; available = floor(24576 * 0.75) = 18432.
+        XCTAssertEqual(budget.availableForContext, 18432)
+    }
+
+    func testLargeDocAutoSwitchesToRetrievalWithRealisticBudget() {
+        // Regression: a ~21k-token *estimate* in a 32K window must NOT inline — it tokenizes
+        // to ~28k for real and would truncate a reasoning reply, so auto switches to retrieval.
+        let budget = ContextBudget(contextSize: 32768, systemTokens: 10, historyTokens: 0, userTokens: 10)
+        let plan = ContextPlanner.plan(contentTokens: 21181,
+                                       available: budget.availableForContext,
+                                       mode: .auto,
+                                       wholeDocTask: false)
+        XCTAssertEqual(plan.first, .retrieval)
     }
 
     // MARK: - ContextPlanner: auto mode

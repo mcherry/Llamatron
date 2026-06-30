@@ -156,6 +156,8 @@ final class ChatViewModel {
                     assistant.promptTokens = chunk.promptTokens
                     assistant.evalTokens = chunk.evalTokens
                     assistant.evalDurationNanos = chunk.evalDurationNanos
+                    // "length" means the model hit the context window mid-reply.
+                    assistant.wasTruncated = (chunk.doneReason == "length")
                 }
             }
             assistant.generationSeconds = Date().timeIntervalSince(started)
@@ -570,9 +572,21 @@ final class ChatViewModel {
             }
         }
 
+        // In automatic mode, when the sources are too large to send whole, the planner
+        // drops from inline to retrieval/summarize. Surface that as a non-blocking
+        // advisory so the user knows the reply is still reliable and how to get a
+        // whole-document answer if they want one.
+        let autoSwitched = session.contextMode == .auto
+            && contentTokens > available
+            && (result.strategyUsed == .retrieval || result.strategyUsed == .summarize)
+        let warning: String? = autoSwitched
+            ? "Sources are large for this \(ContextSize.label(session.contextSize)) window — auto-switched to \(result.strategyUsed.label) so the reply isn't cut off. For a whole-document answer, increase the context size or attach a smaller source."
+            : nil
+
         contextInfo = ContextInfo(strategy: result.strategyUsed,
                                   sources: result.sourceLabels,
-                                  note: result.note)
+                                  note: result.note,
+                                  warning: warning)
         if !result.retrieved.isEmpty {
             assistant.retrievalData = try? JSONEncoder().encode(result.retrieved)
         }
@@ -606,6 +620,9 @@ struct ContextInfo: Equatable {
     var strategy: ContextStrategy
     var sources: [String]
     var note: String?
+    /// A non-blocking advisory shown prominently when automatic mode had to switch
+    /// away from full-text to keep the reply from being truncated.
+    var warning: String?
 
     var summary: String {
         let sourceList = sources.isEmpty ? "" : " · " + sources.joined(separator: ", ")

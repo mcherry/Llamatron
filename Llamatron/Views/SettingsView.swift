@@ -9,6 +9,12 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
     @AppStorage(SettingsKey.diagramGuidance) private var diagramGuidance = false
 
+    @AppStorage(SettingsKey.searchProvider) private var searchProvider = WebSearch.ProviderKind.none.rawValue
+    @AppStorage(SettingsKey.searxngURL) private var searxngURL = ""
+    @AppStorage(SettingsKey.braveAPIKey) private var braveAPIKey = ""
+    @AppStorage(SettingsKey.tavilyAPIKey) private var tavilyAPIKey = ""
+    @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
+
     @State private var allModels: [OllamaModel] = []
     @State private var loadingModels = false
     @State private var showingModelManager = false
@@ -75,6 +81,35 @@ struct SettingsView: View {
                 Text("Used to find relevant excerpts in attached files (retrieval). Pick an embedding model available on your server.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            Section("Web Search") {
+                Picker("Provider", selection: $searchProvider) {
+                    ForEach(WebSearch.ProviderKind.allCases) { kind in
+                        Text(kind.label).tag(kind.rawValue)
+                    }
+                }
+                if searchProvider == WebSearch.ProviderKind.wikipedia.rawValue {
+                    Text("Searches English Wikipedia — no account needed. Great for history, places, and general facts.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if searchProvider == WebSearch.ProviderKind.searxng.rawValue {
+                    TextField("SearXNG instance URL", text: $searxngURL)
+                    Text("A self-hosted SearXNG base URL (e.g. http://localhost:8080) — no account needed; it aggregates real engines.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if searchProvider == WebSearch.ProviderKind.marginalia.rawValue {
+                    TextField("Marginalia API key", text: $marginaliaAPIKey)
+                    Text("An independent engine for text-heavy, non-commercial pages. The default “public” key works (shared rate limit); email contact@marginalia-search.com for a free personal key.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if searchProvider == WebSearch.ProviderKind.brave.rawValue {
+                    SecureField("Brave Search API key", text: $braveAPIKey)
+                    Text("From the Brave Search API dashboard. Stored locally in app settings.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if searchProvider == WebSearch.ProviderKind.tavily.rawValue {
+                    SecureField("Tavily API key", text: $tavilyAPIKey)
+                    Text("An LLM-focused search API with a free tier, from tavily.com. Stored locally in app settings.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Find web pages to add as context sources from the globe button in the composer. Search uses sanctioned APIs only (never scraping); result pages are fetched politely — robots.txt and per-host rate limits apply.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Rendering") {
                 Toggle("Guide models to render diagrams inline", isOn: $diagramGuidance)
