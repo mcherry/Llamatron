@@ -273,9 +273,11 @@ struct ChatView: View {
                 .foregroundStyle(.secondary)
             Spacer()
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(.purple.opacity(0.10))
+        .background(.purple.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
     }
 
     private func contextInfoBar(_ info: ContextInfo) -> some View {
