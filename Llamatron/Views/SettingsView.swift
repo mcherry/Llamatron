@@ -228,6 +228,8 @@ struct SettingsView: View {
                 }
                 Text("Tap the mic in the composer to dictate. Recognition runs on-device when supported. With auto-send off, dictation fills the message box and you send it yourself.")
                     .font(.caption).foregroundStyle(.secondary)
+                Text("Requires Dictation to be turned on in System Settings ▸ Keyboard.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Rendering") {
                 Toggle("Guide models to render diagrams inline", isOn: $diagramGuidance)

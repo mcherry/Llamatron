@@ -22,6 +22,11 @@ final class DictationController {
     /// Incremented when a speech pause should auto-submit (only when `autoSend` is on).
     /// The view observes this and sends the draft.
     private(set) var autoSendTick = 0
+    /// True when a previous attempt crashed the app inside the Speech framework (the
+    /// most common cause is Dictation being turned off system-wide, which the framework
+    /// can't recover from in a sandboxed app). Detected via a persisted "crash guard"
+    /// flag; when set, the mic warns instead of trying again and crashing.
+    private(set) var isUnavailable = false
 
     /// When true, a pause longer than `silenceSeconds` ends dictation and requests a send.
     var autoSend = false
@@ -31,6 +36,10 @@ final class DictationController {
     /// Whether speech recognition is usable at all (a recognizer exists for the locale).
     var isSupported: Bool { recognizer != nil }
 
+    /// UserDefaults flag set just before the call that can crash, and cleared the instant
+    /// recognition responds. If it's still set at launch, the last attempt crashed.
+    private static let crashGuardKey = "dictationCrashGuard"
+
     private let recognizer = SFSpeechRecognizer()
     private var engine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -38,6 +47,12 @@ final class DictationController {
     private var task: SFSpeechRecognitionTask?
     private var silenceTask: Task<Void, Never>?
     private var starting = false
+
+    init() {
+        // A guard left set from a previous launch means dictation crashed the app last
+        // time (Speech service unavailable). Start disabled so we don't crash again.
+        isUnavailable = UserDefaults.standard.bool(forKey: Self.crashGuardKey)
+    }
 
     /// Starts dictation if idle, otherwise stops it.
     func toggle() {
@@ -49,6 +64,14 @@ final class DictationController {
     /// queue, which the audio frameworks expect.
     func start() {
         guard !isListening, !starting else { return }
+        if isUnavailable {
+            // The last attempt crashed the app. Re-arm but don't try again this click —
+            // tell the user how to fix it first, so we don't immediately crash again.
+            clearCrashGuard()
+            isUnavailable = false
+            errorMessage = "Speech-to-text stopped working last time. Turn on Dictation in System Settings ▸ Keyboard, then click the mic again to retry."
+            return
+        }
         guard let recognizer, recognizer.isAvailable else {
             errorMessage = "Speech recognition isn't available on this Mac."
             return
@@ -108,6 +131,11 @@ final class DictationController {
         let sink = AudioSink(request)
         self.sink = sink
 
+        // Arm the crash guard right before the Speech call that can take down the app
+        // (e.g. when Dictation is disabled). Cleared the moment recognition responds.
+        UserDefaults.standard.set(true, forKey: Self.crashGuardKey)
+        UserDefaults.standard.synchronize()
+
         // Start recognition before wiring the microphone, matching Apple's pattern.
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             // Extract only Sendable values before hopping to the main actor.
@@ -128,6 +156,7 @@ final class DictationController {
         do {
             try engine.start()
         } catch {
+            clearCrashGuard()
             starting = false
             errorMessage = error.localizedDescription
             teardown()
@@ -140,6 +169,8 @@ final class DictationController {
     }
 
     private func handle(text: String?, isFinal: Bool, failed: Bool) {
+        // Recognition responded, so it didn't crash — clear the crash guard.
+        clearCrashGuard()
         guard isListening else { return }
         if let text {
             transcript = text
@@ -198,6 +229,11 @@ final class DictationController {
     }
 
     func clearError() { errorMessage = nil }
+
+    /// Clears the persisted crash-guard flag (recognition didn't take the app down).
+    private func clearCrashGuard() {
+        UserDefaults.standard.set(false, forKey: Self.crashGuardKey)
+    }
 
     /// Combines existing draft text with a live transcript: the transcript is appended
     /// after the draft (with a single separating space), so dictation adds to whatever
