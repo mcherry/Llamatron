@@ -13,6 +13,10 @@ struct Composer: View {
     var onAttach: (() -> Void)?
     var onAddWebSource: (() -> Void)?
     var onWebSearch: (() -> Void)?
+    /// When set, a mic button toggles speech-to-text dictation into the field.
+    var onMic: (() -> Void)?
+    /// True while dictation is actively transcribing, for the mic button's state.
+    var isDictating: Bool = false
 
     @AppStorage(SettingsKey.composerHeight) private var storedHeight = SettingsDefault.composerHeight
     /// Live height while a resize drag is in progress; `nil` when not dragging.
@@ -100,6 +104,9 @@ struct Composer: View {
                 if onAddWebSource != nil || onWebSearch != nil {
                     webButton
                 }
+                if onMic != nil {
+                    micButton
+                }
                 Spacer()
                 sendStopButton
             }
@@ -144,6 +151,19 @@ struct Composer: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Add web content for context")
+    }
+
+    private var micButton: some View {
+        Button {
+            onMic?()
+        } label: {
+            Image(systemName: isDictating ? "mic.fill" : "mic")
+                .font(.title3)
+                .foregroundStyle(isDictating ? Color.red : .secondary)
+                .symbolEffect(.pulse, isActive: isDictating)
+        }
+        .buttonStyle(.plain)
+        .help(isDictating ? "Stop dictation" : "Dictate a message")
     }
 
     @ViewBuilder

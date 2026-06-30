@@ -20,9 +20,14 @@ struct ChatView: View {
     @AppStorage(SettingsKey.ttsServerURL) private var ttsServerURL = SettingsDefault.ttsServerURL
     @AppStorage(SettingsKey.ttsVoice) private var ttsVoice = ""
     @AppStorage(SettingsKey.ttsSpeed) private var ttsSpeed = SettingsDefault.ttsSpeed
+    @AppStorage(SettingsKey.dictationAutoSend) private var dictationAutoSend = false
+    @AppStorage(SettingsKey.dictationPauseSeconds) private var dictationPauseSeconds = SettingsDefault.dictationPauseSeconds
 
     @State private var viewModel = ChatViewModel()
     @State private var speech = SpeechController()
+    @State private var dictation = DictationController()
+    /// The draft text captured when dictation started, so the transcript appends to it.
+    @State private var dictationBase = ""
     /// True while an auto-TTS reply is generating, so its text is held hidden until
     /// narration begins.
     @State private var narrationArmed = false
@@ -67,14 +72,7 @@ struct ChatView: View {
             if !session.attachments.isEmpty {
                 attachmentsBar
             }
-            Composer(text: $draft,
-                     isStreaming: viewModel.isStreaming,
-                     canSend: canSend,
-                     onSend: send,
-                     onStop: viewModel.stop,
-                     onAttach: { showingImporter = true },
-                     onAddWebSource: { showingAddWebSource = true },
-                     onWebSearch: { showingWebSearch = true })
+            composer
             Divider()
             StatusBarView(session: session, isStreaming: viewModel.isStreaming)
         }
@@ -101,7 +99,10 @@ struct ChatView: View {
             return true
         }
         .task(id: serverURL) { await loadVisionCapabilities() }
-        .onDisappear { speech.stop() }
+        .onDisappear {
+            speech.stop()
+            dictation.stop()
+        }
         .onChange(of: viewModel.isStreaming) { wasStreaming, nowStreaming in
             // When an auto-TTS reply finishes generating, narrate it: the text stays
             // hidden (held by `narrationArmed`) until playback starts, then reveals in
@@ -137,6 +138,45 @@ struct ChatView: View {
                       document: exportDocument,
                       contentType: exportContentType,
                       defaultFilename: exportName) { _ in }
+    }
+
+    private var composer: some View {
+        composerBase
+            .onChange(of: dictation.transcript) { _, text in
+                // Live dictation owns the draft while listening: append to what was there.
+                if dictation.isListening {
+                    draft = DictationController.composed(base: dictationBase, transcript: text)
+                }
+            }
+            .onChange(of: dictation.autoSendTick) { _, _ in
+                // A speech pause finished an utterance; submit hands-free if we can.
+                if canSend { send() }
+            }
+            .onChange(of: dictation.errorMessage) { _, message in
+                if let message {
+                    viewModel.errorMessage = message
+                    dictation.clearError()
+                }
+            }
+    }
+
+    private var composerBase: some View {
+        Composer(text: $draft,
+                 isStreaming: viewModel.isStreaming,
+                 canSend: canSend,
+                 onSend: send,
+                 onStop: viewModel.stop,
+                 onAttach: { showingImporter = true },
+                 onAddWebSource: { showingAddWebSource = true },
+                 onWebSearch: { showingWebSearch = true },
+                 onMic: micAction,
+                 isDictating: dictation.isListening)
+    }
+
+    /// The mic toggle, or `nil` when speech recognition isn't available.
+    private var micAction: (() -> Void)? {
+        guard dictation.isSupported else { return nil }
+        return { toggleDictation() }
     }
 
     // MARK: - Header
@@ -405,6 +445,7 @@ struct ChatView: View {
     private func send() {
         // The client may be nil (e.g. a blank server URL); that's fine for an Apple
         // Intelligence session. The view model validates what each backend needs.
+        dictation.stop()
         let client = OllamaClient(baseURLString: serverURL,
                                   timeout: TimeInterval(requestTimeout))
         let text = draft
@@ -438,6 +479,19 @@ struct ChatView: View {
 
     private func toggleSpeak(_ message: ChatMessage) {
         speech.toggle(messageID: message.id, text: message.content, config: ttsConfig)
+    }
+
+    /// Toggles speech-to-text: dictation streams into the draft; the user (or, with
+    /// auto-send, a pause) submits it.
+    private func toggleDictation() {
+        if dictation.isListening {
+            dictation.stop()
+        } else {
+            dictationBase = draft
+            dictation.autoSend = dictationAutoSend
+            dictation.silenceSeconds = dictationPauseSeconds
+            dictation.start()
+        }
     }
 
     /// Whether auto-TTS will narrate replies (Apple is always ready; the server needs a

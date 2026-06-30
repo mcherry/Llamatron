@@ -34,6 +34,10 @@ enum SettingsKey {
     static let ttsServerURL = "ttsServerURL"
     static let ttsVoice = "ttsVoice"
     static let ttsSpeed = "ttsSpeed"
+
+    // Speech-to-text dictation (on-device; fills the composer).
+    static let dictationAutoSend = "dictationAutoSend"
+    static let dictationPauseSeconds = "dictationPauseSeconds"
 }
 
 /// Default values for the settings above.
@@ -49,6 +53,7 @@ enum SettingsDefault {
     static let imageCFG = 7.5
     static let ttsServerURL = "http://localhost:8880"
     static let ttsSpeed = 1.0
+    static let dictationPauseSeconds = 1.5
 }
 
 /// Context-window presets offered in the pickers, plus a display formatter.

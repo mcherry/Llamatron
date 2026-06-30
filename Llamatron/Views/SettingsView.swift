@@ -38,6 +38,8 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.ttsServerURL) private var ttsServerURL = SettingsDefault.ttsServerURL
     @AppStorage(SettingsKey.ttsVoice) private var ttsVoice = ""
     @AppStorage(SettingsKey.ttsSpeed) private var ttsSpeed = SettingsDefault.ttsSpeed
+    @AppStorage(SettingsKey.dictationAutoSend) private var dictationAutoSend = false
+    @AppStorage(SettingsKey.dictationPauseSeconds) private var dictationPauseSeconds = SettingsDefault.dictationPauseSeconds
     @State private var appleVoices: [TTSVoice] = []
     @State private var ttsVoices: [TTSVoice] = []
     @State private var ttsTesting = false
@@ -217,6 +219,16 @@ struct SettingsView: View {
                 Text("Enable speech per chat in Session Settings (with an optional auto-speak).")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Speech-to-Text") {
+                Toggle("Auto-send after a pause", isOn: $dictationAutoSend)
+                if dictationAutoSend {
+                    Stepper(value: $dictationPauseSeconds, in: 0.5...5.0, step: 0.5) {
+                        Text("Pause: \(dictationPauseSeconds, specifier: "%.1f")s")
+                    }
+                }
+                Text("Tap the mic in the composer to dictate. Recognition runs on-device when supported. With auto-send off, dictation fills the message box and you send it yourself.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Rendering") {
                 Toggle("Guide models to render diagrams inline", isOn: $diagramGuidance)
                 Text("Adds a short system instruction so models emit valid Mermaid diagrams (quoted labels) and skip “paste into an online editor” notes. Diagrams render inline in the chat. Appears in the request payload, visible in the turn inspector.")
@@ -225,7 +237,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480, height: 600)
+        .frame(width: 480, height: 640)
         .task {
             appleVoices = AppleSpeech.voices()
             await loadModels()
