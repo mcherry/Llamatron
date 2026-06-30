@@ -21,6 +21,13 @@ struct MessageRow: View {
     /// bubble ever spanning the full width.
     private let oppositeInset: CGFloat = 64
 
+    /// Reasoning longer than this many characters streams inside a fixed-height,
+    /// auto-scrolling box so a long "thinking" pass doesn't grow the row and scroll
+    /// the whole transcript endlessly.
+    private let thinkingScrollThreshold = 600
+    private let thinkingBoxHeight: CGFloat = 200
+    private let thinkingAnchor = "thinking-end"
+
     var body: some View {
         HStack(spacing: 0) {
             if isUser { Spacer(minLength: oppositeInset) }
@@ -135,12 +142,7 @@ struct MessageRow: View {
     /// Collapsible reasoning trace from thinking models.
     private var thinkingDisclosure: some View {
         DisclosureGroup(isExpanded: $thinkingExpanded) {
-            Text(message.thinking)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 2)
+            thinkingContent
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "brain")
@@ -152,6 +154,41 @@ struct MessageRow: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         }
+    }
+
+    /// Long reasoning streams inside a fixed-height, auto-scrolling box so the
+    /// transcript doesn't scroll endlessly while the model thinks; short reasoning
+    /// renders inline.
+    @ViewBuilder
+    private var thinkingContent: some View {
+        if message.thinking.count > thinkingScrollThreshold {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    thinkingText
+                    Color.clear.frame(height: 1).id(thinkingAnchor)
+                }
+                .frame(height: thinkingBoxHeight)
+                .onChange(of: message.thinking) {
+                    // Follow the latest reasoning only while it streams.
+                    guard isGenerating else { return }
+                    proxy.scrollTo(thinkingAnchor, anchor: .bottom)
+                }
+                .onAppear {
+                    if isGenerating { proxy.scrollTo(thinkingAnchor, anchor: .bottom) }
+                }
+            }
+            .padding(.top, 2)
+        } else {
+            thinkingText.padding(.top, 2)
+        }
+    }
+
+    private var thinkingText: some View {
+        Text(message.thinking)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var captionText: String {

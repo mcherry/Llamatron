@@ -291,9 +291,12 @@ struct ChatView: View {
                 .padding(.vertical, 2)
                 .background(.quaternary, in: Capsule())
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background((isWarning ? Color.orange : Color.blue).opacity(isWarning ? 0.12 : 0.08))
+        .background((isWarning ? Color.orange : Color.blue).opacity(isWarning ? 0.12 : 0.08),
+                    in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
     }
 
     private var attachmentsBar: some View {
