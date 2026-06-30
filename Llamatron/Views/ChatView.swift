@@ -98,6 +98,13 @@ struct ChatView: View {
         }
         .task(id: serverURL) { await loadVisionCapabilities() }
         .onDisappear { speech.stop() }
+        .onChange(of: viewModel.isStreaming) { wasStreaming, nowStreaming in
+            // Auto-speak a finished reply when the session opted in.
+            guard wasStreaming, !nowStreaming else { return }
+            guard session.ttsEnabled, session.ttsAutoSpeak, viewModel.errorMessage == nil else { return }
+            guard let last = visibleMessages.last, last.role == .assistant, !last.content.isEmpty else { return }
+            speech.speak(messageID: last.id, text: last.content, config: ttsConfig)
+        }
         .confirmationDialog("Start a fresh chat?",
                             isPresented: $showingResetConfirm,
                             titleVisibility: .visible) {
@@ -388,13 +395,16 @@ struct ChatView: View {
         session.ttsEnabled && message.role == .assistant && !message.content.isEmpty
     }
 
+    private var ttsConfig: SpeechController.Config {
+        SpeechController.Config(engine: session.ttsEngine,
+                               appleVoice: ttsAppleVoice,
+                               serverURL: ttsServerURL,
+                               serverVoice: ttsVoice,
+                               speed: ttsSpeed)
+    }
+
     private func toggleSpeak(_ message: ChatMessage) {
-        let config = SpeechController.Config(engine: session.ttsEngine,
-                                             appleVoice: ttsAppleVoice,
-                                             serverURL: ttsServerURL,
-                                             serverVoice: ttsVoice,
-                                             speed: ttsSpeed)
-        speech.toggle(messageID: message.id, text: message.content, config: config)
+        speech.toggle(messageID: message.id, text: message.content, config: ttsConfig)
     }
 
     private enum ExportFormat { case markdown, json }
