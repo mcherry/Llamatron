@@ -36,6 +36,13 @@ struct SessionConfigView: View {
     @State private var stopText = ""
     @State private var maxTokensText = ""
 
+    @AppStorage(SettingsKey.imageGenEnabled) private var imageGenEnabled = false
+    @AppStorage(SettingsKey.imageServerURL) private var imageServerURL = SettingsDefault.imageServerURL
+    @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
+    @State private var imageModels: [ImageModel] = []
+    @State private var imageTesting = false
+    @State private var imageLoadError: String?
+
     /// Shared width for the generation parameter entry fields.
     private let fieldWidth: CGFloat = 160
 
@@ -62,14 +69,22 @@ struct SessionConfigView: View {
                 if session.backend == .appleIntelligence {
                     appleGenerationSection
                 }
-                historySection
-                contextStrategySection
-                systemPromptSection
+                if session.backend == .imageGeneration {
+                    imageSection
+                }
+                if session.backend != .imageGeneration {
+                    historySection
+                    contextStrategySection
+                    systemPromptSection
+                }
             }
             .formStyle(.grouped)
         }
         .frame(width: 470, height: 620)
         .task { await loadModels() }
+        .task(id: session.backend) {
+            if session.backend == .imageGeneration { await loadImageModels() }
+        }
         .onAppear(perform: loadParameterFields)
     }
 
@@ -81,6 +96,9 @@ struct SessionConfigView: View {
                 // but keep an already-chosen value visible so it isn't silently reset.
                 if appleStatus == .available || session.backend == .appleIntelligence {
                     Text(BackendKind.appleIntelligence.label).tag(BackendKind.appleIntelligence)
+                }
+                if imageGenEnabled || session.backend == .imageGeneration {
+                    Text(BackendKind.imageGeneration.label).tag(BackendKind.imageGeneration)
                 }
             }
 
@@ -318,6 +336,69 @@ struct SessionConfigView: View {
         Image(systemName: "info.circle")
             .foregroundStyle(.secondary)
             .help(help)
+    }
+
+    private var imageSection: some View {
+        Section("Image Generation") {
+            if !imageGenEnabled {
+                Label("Turn on image generation in Settings, then pick a model here.", systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                HStack {
+                    Picker("Image model", selection: $session.imageModel) {
+                        Text("Select a model…").tag("")
+                        ForEach(imageModels) { Text($0.name).tag($0.id) }
+                        if !session.imageModel.isEmpty, !imageModels.contains(where: { $0.id == session.imageModel }) {
+                            Text(session.imageModel).tag(session.imageModel)
+                        }
+                    }
+                    Button {
+                        Task { await loadImageModels() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .disabled(imageTesting)
+                    .help("Load models from the image server")
+                }
+                if imageTesting {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Loading models…").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let imageLoadError {
+                    Label(imageLoadError, systemImage: "exclamationmark.triangle")
+                        .font(.caption).foregroundStyle(.red)
+                }
+                Stepper("Steps: \(session.imageSteps)", value: $session.imageSteps, in: 1...150)
+                Stepper("Size: \(session.imageSize)px", value: $session.imageSize, in: 256...2048, step: 64)
+                Stepper(value: $session.imageCFG, in: 1...20, step: 0.5) {
+                    Text("Guidance (CFG): \(session.imageCFG, specifier: "%.1f")")
+                }
+                TextField("Negative prompt (optional)", text: $session.imageNegativePrompt, axis: .vertical)
+                    .lineLimit(1...3)
+                Text("Prompts in this chat are sent to the image server; the rendered image appears in the reply.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Loads the image server's models into the per-chat picker, defaulting the chosen
+    /// model to the first one when none is set yet.
+    private func loadImageModels() async {
+        imageTesting = true
+        imageLoadError = nil
+        let kind = ImageBackendKind(rawValue: imageBackendKind) ?? .easyDiffusion
+        let provider = kind.makeProvider(baseURLString: imageServerURL)
+        do {
+            let fetched = try await provider.listModels().sorted { $0.name < $1.name }
+            imageModels = fetched
+            if session.imageModel.isEmpty, let first = fetched.first { session.imageModel = first.id }
+            if fetched.isEmpty { imageLoadError = "Connected, but found no image models." }
+        } catch {
+            imageLoadError = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach the image server."
+        }
+        imageTesting = false
     }
 
     private var historySection: some View {

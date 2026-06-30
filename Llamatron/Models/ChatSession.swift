@@ -50,6 +50,16 @@ final class ChatSession {
     /// images then go natively to the primary model if it supports vision.
     var visionModel: String = ""
 
+    // Image generation (when `backend == .imageGeneration`). The server URL + kind are
+    // app-level (Settings); these are the per-chat model and parameters.
+    var imageModel: String = ""
+    var imageSize: Int = 640
+    var imageSteps: Int = 20
+    var imageCFG: Double = 7.5
+    var imageNegativePrompt: String = ""
+    var imageSeed: Int?
+    var imageVAE: String = ""
+
     @Relationship(deleteRule: .cascade, inverse: \ChatMessage.session)
     var messages: [ChatMessage] = []
 
@@ -128,6 +138,7 @@ final class ChatSession {
         switch backend {
         case .ollama: return !modelName.isEmpty
         case .appleIntelligence: return true
+        case .imageGeneration: return !imageModel.isEmpty
         }
     }
 

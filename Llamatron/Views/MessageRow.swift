@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// One turn in the transcript. User turns are right-aligned and hug their content;
 /// assistant turns are left-aligned and render Markdown. Each row has a caption with
@@ -109,11 +110,14 @@ struct MessageRow: View {
                 if !message.thinking.isEmpty {
                     thinkingDisclosure
                 }
+                if let data = message.generatedImageData, let nsImage = NSImage(data: data) {
+                    generatedImage(nsImage)
+                }
                 if !message.content.isEmpty {
                     MarkdownView(text: message.content, renderDiagrams: !isGenerating)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                } else if message.thinking.isEmpty {
+                } else if message.thinking.isEmpty && message.generatedImageData == nil {
                     ProgressView()
                         .controlSize(.small)
                 }
@@ -189,6 +193,15 @@ struct MessageRow: View {
             .foregroundStyle(.secondary)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A generated image reply, scaled to fit within the bubble.
+    private func generatedImage(_ nsImage: NSImage) -> some View {
+        Image(nsImage: nsImage)
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: 512, maxHeight: 512)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var captionText: String {

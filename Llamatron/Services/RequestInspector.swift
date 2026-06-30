@@ -12,6 +12,8 @@ enum RequestInspector {
             return ollamaPayload(request)
         case .appleIntelligence:
             return applePayload(request, options: appleOptions)
+        case .imageGeneration:
+            return nil
         }
     }
 

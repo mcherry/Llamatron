@@ -101,6 +101,8 @@ private struct SessionRow: View {
             return session.modelName.isEmpty ? "No model set" : session.modelName
         case .appleIntelligence:
             return BackendKind.appleIntelligence.label
+        case .imageGeneration:
+            return session.imageModel.isEmpty ? "No image model" : session.imageModel
         }
     }
 

@@ -46,6 +46,9 @@ final class ChatMessage {
     /// length`) rather than finishing — i.e. the reply was cut off. Drives an inline
     /// "reply cut off" notice. Always false for non-Ollama backends and user turns.
     var wasTruncated: Bool = false
+    /// PNG bytes of an image generated for this assistant turn (the image-generation
+    /// backend). `nil` for text replies and user turns.
+    var generatedImageData: Data?
 
     /// Inverse side of `ChatSession.messages`.
     var session: ChatSession?

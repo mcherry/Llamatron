@@ -24,9 +24,21 @@ final class ChatViewModel {
               client: OllamaClient?,
               embeddingModel: String,
               diagramGuidance: Bool = false,
+              imageServerURL: String = "",
+              imageBackendKind: String = ImageBackendKind.easyDiffusion.rawValue,
               modelContext: ModelContext) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, session.isConfigured else { return }
+
+        // Image-generation backend doesn't stream text — render the prompt to an image.
+        if session.backend == .imageGeneration {
+            generateImage(text: trimmed,
+                          session: session,
+                          serverURL: imageServerURL,
+                          backendKindRaw: imageBackendKind,
+                          modelContext: modelContext)
+            return
+        }
 
         // Resolve the chat backend up front. Ollama needs a reachable server; Apple
         // Intelligence runs entirely on-device and needs no client.
@@ -40,6 +52,8 @@ final class ChatViewModel {
             backend = client
         case .appleIntelligence:
             backend = FoundationModelsBackend(options: session.appleOptions)
+        case .imageGeneration:
+            return   // handled above
         }
 
         errorMessage = nil
@@ -123,6 +137,64 @@ final class ChatViewModel {
 
     func dismissError() {
         errorMessage = nil
+    }
+
+    /// Image-generation backend: render the prompt to an image reply via the configured
+    /// local image server. Runs off-main in the cancellable `streamTask`; the rendered
+    /// PNG is stored on the assistant message. No text streaming, history, or RAG.
+    private func generateImage(text: String,
+                               session: ChatSession,
+                               serverURL: String,
+                               backendKindRaw: String,
+                               modelContext: ModelContext) {
+        guard ImageGen.isConfigured(enabled: true, serverURL: serverURL) else {
+            errorMessage = "Set an image server URL in Settings → Image Generation."
+            return
+        }
+        errorMessage = nil
+        contextInfo = nil
+
+        let userMessage = ChatMessage(role: .user, content: text)
+        userMessage.session = session
+        modelContext.insert(userMessage)
+
+        let assistant = ChatMessage(role: .assistant, content: "")
+        assistant.session = session
+        modelContext.insert(assistant)
+        session.updatedAt = .now
+
+        let request = ImageRequest(prompt: text,
+                                   negativePrompt: session.imageNegativePrompt,
+                                   model: session.imageModel,
+                                   steps: session.imageSteps,
+                                   width: session.imageSize,
+                                   height: session.imageSize,
+                                   cfgScale: session.imageCFG,
+                                   vae: session.imageVAE,
+                                   seed: session.imageSeed)
+        let provider = (ImageBackendKind(rawValue: backendKindRaw) ?? .easyDiffusion)
+            .makeProvider(baseURLString: serverURL)
+
+        isStreaming = true
+        activityStatus = "Generating image…"
+        let started = Date()
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let data = try await provider.generate(request)
+                assistant.generatedImageData = data
+                assistant.generationSeconds = Date().timeIntervalSince(started)
+                session.updatedAt = .now
+            } catch is CancellationError {
+                modelContext.delete(assistant)
+            } catch {
+                modelContext.delete(assistant)
+                self.errorMessage = error.localizedDescription
+            }
+            self.activityStatus = nil
+            self.isStreaming = false
+            self.streamTask = nil
+        }
     }
 
     // MARK: - Streaming

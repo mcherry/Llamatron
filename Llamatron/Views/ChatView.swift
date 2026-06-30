@@ -13,6 +13,8 @@ struct ChatView: View {
     @AppStorage(SettingsKey.requestTimeout) private var requestTimeout = SettingsDefault.timeout
     @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
     @AppStorage(SettingsKey.diagramGuidance) private var diagramGuidance = false
+    @AppStorage(SettingsKey.imageServerURL) private var imageServerURL = SettingsDefault.imageServerURL
+    @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
 
     @State private var viewModel = ChatViewModel()
     @State private var draft = ""
@@ -222,6 +224,8 @@ struct ChatView: View {
             return session.modelName.isEmpty ? "Choose model" : session.modelName
         case .appleIntelligence:
             return BackendKind.appleIntelligence.label
+        case .imageGeneration:
+            return session.imageModel.isEmpty ? "Choose image model" : session.imageModel
         }
     }
 
@@ -360,6 +364,8 @@ struct ChatView: View {
                        client: client,
                        embeddingModel: embeddingModel,
                        diagramGuidance: diagramGuidance,
+                       imageServerURL: imageServerURL,
+                       imageBackendKind: imageBackendKind,
                        modelContext: modelContext)
     }
 
