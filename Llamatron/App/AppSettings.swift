@@ -17,6 +17,16 @@ enum SettingsKey {
     static let braveAPIKey = "braveAPIKey"
     static let tavilyAPIKey = "tavilyAPIKey"
     static let marginaliaAPIKey = "marginaliaAPIKey"
+
+    // Image generation (app defaults; per-chat overrides live on ChatSession).
+    static let imageGenEnabled = "imageGenEnabled"
+    static let imageBackendKind = "imageBackendKind"
+    static let imageServerURL = "imageServerURL"
+    static let imageModel = "imageModel"
+    static let imageSteps = "imageSteps"
+    static let imageSize = "imageSize"
+    static let imageCFG = "imageCFG"
+    static let imageNegativePrompt = "imageNegativePrompt"
 }
 
 /// Default values for the settings above.
@@ -26,6 +36,10 @@ enum SettingsDefault {
     static let timeout = 120
     static let composerHeight = 72.0
     static let embeddingModel = "nomic-embed-text"
+    static let imageServerURL = "http://localhost:9000"
+    static let imageSteps = 20
+    static let imageSize = 640
+    static let imageCFG = 7.5
 }
 
 /// Context-window presets offered in the pickers, plus a display formatter.

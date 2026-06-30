@@ -15,9 +15,23 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.tavilyAPIKey) private var tavilyAPIKey = ""
     @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
 
+    @AppStorage(SettingsKey.imageGenEnabled) private var imageGenEnabled = false
+    @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
+    @AppStorage(SettingsKey.imageServerURL) private var imageServerURL = SettingsDefault.imageServerURL
+    @AppStorage(SettingsKey.imageModel) private var imageModel = ""
+    @AppStorage(SettingsKey.imageSteps) private var imageSteps = SettingsDefault.imageSteps
+    @AppStorage(SettingsKey.imageSize) private var imageSize = SettingsDefault.imageSize
+    @AppStorage(SettingsKey.imageCFG) private var imageCFG = SettingsDefault.imageCFG
+    @AppStorage(SettingsKey.imageNegativePrompt) private var imageNegativePrompt = ""
+
     @State private var allModels: [OllamaModel] = []
     @State private var loadingModels = false
     @State private var showingModelManager = false
+
+    @State private var imageModels: [ImageModel] = []
+    @State private var imageTesting = false
+    @State private var imageTestStatus: String?
+    @State private var imageTestOK = false
 
     private var chatModels: [OllamaModel] {
         allModels.filter { !$0.isEmbeddingModel }
@@ -111,6 +125,44 @@ struct SettingsView: View {
                 Text("Find web pages to add as context sources from the globe button in the composer. Search uses sanctioned APIs only (never scraping); result pages are fetched politely — robots.txt and per-host rate limits apply.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Image Generation") {
+                Toggle("Enable image generation", isOn: $imageGenEnabled)
+                Text("Generate images from a local image server (e.g. Easy Diffusion) by setting a chat's backend to Image Generation. Optional.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if imageGenEnabled {
+                    Picker("Server type", selection: $imageBackendKind) {
+                        ForEach(ImageBackendKind.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
+                    TextField("Server URL", text: $imageServerURL)
+                        .autocorrectionDisabled()
+                    HStack(spacing: 8) {
+                        Button("Test") { Task { await testImageServer() } }
+                            .disabled(imageTesting || imageServerURL.isEmpty)
+                        if imageTesting { ProgressView().controlSize(.small) }
+                        if let status = imageTestStatus {
+                            Label(status, systemImage: imageTestOK ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundStyle(imageTestOK ? .green : .red)
+                                .font(.caption).lineLimit(2)
+                        }
+                    }
+                    Picker("Default model", selection: $imageModel) {
+                        Text("None").tag("")
+                        ForEach(imageModels) { Text($0.name).tag($0.id) }
+                        if !imageModel.isEmpty, !imageModels.contains(where: { $0.id == imageModel }) {
+                            Text(imageModel).tag(imageModel)
+                        }
+                    }
+                    Text("Run Test to load the server's models, then pick a default.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Stepper("Steps: \(imageSteps)", value: $imageSteps, in: 1...150)
+                    Stepper("Size: \(imageSize)px", value: $imageSize, in: 256...2048, step: 64)
+                    Stepper(value: $imageCFG, in: 1...20, step: 0.5) {
+                        Text("Guidance (CFG): \(imageCFG, specifier: "%.1f")")
+                    }
+                    TextField("Negative prompt (optional)", text: $imageNegativePrompt, axis: .vertical)
+                        .lineLimit(1...3)
+                }
+            }
             Section("Rendering") {
                 Toggle("Guide models to render diagrams inline", isOn: $diagramGuidance)
                 Text("Adds a short system instruction so models emit valid Mermaid diagrams (quoted labels) and skip “paste into an online editor” notes. Diagrams render inline in the chat. Appears in the request payload, visible in the turn inspector.")
@@ -119,7 +171,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480, height: 520)
+        .frame(width: 480, height: 560)
         .task { await loadModels() }
         .sheet(isPresented: $showingModelManager) {
             ModelManagementView(serverURL: serverURL)
@@ -133,5 +185,27 @@ struct SettingsView: View {
             allModels = fetched.sorted { $0.name < $1.name }
         }
         loadingModels = false
+    }
+
+    /// Tests the configured image server by listing its models and populating the default-model
+    /// picker. Selects the first model if none is chosen yet.
+    private func testImageServer() async {
+        imageTesting = true
+        imageTestStatus = nil
+        let kind = ImageBackendKind(rawValue: imageBackendKind) ?? .easyDiffusion
+        let provider = kind.makeProvider(baseURLString: imageServerURL)
+        do {
+            let models = try await provider.listModels().sorted { $0.name < $1.name }
+            imageModels = models
+            imageTestOK = !models.isEmpty
+            imageTestStatus = models.isEmpty
+                ? "Connected, but found no image models."
+                : "Found \(models.count) model\(models.count == 1 ? "" : "s")."
+            if imageModel.isEmpty, let first = models.first { imageModel = first.id }
+        } catch {
+            imageTestOK = false
+            imageTestStatus = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach the server."
+        }
+        imageTesting = false
     }
 }
