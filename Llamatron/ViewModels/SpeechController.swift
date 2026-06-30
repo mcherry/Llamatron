@@ -85,7 +85,7 @@ final class SpeechController: NSObject {
                     let provider = KokoroTTSProvider(baseURLString: config.serverURL)
                     let data = try await provider.synthesize(
                         TTSRequest(text: spoken, voice: config.serverVoice, speed: config.speed, format: "wav"))
-                    try await Task.detached { try AudioExport.writeM4A(wav: data, to: url) }.value
+                    try await AudioExport.writeM4A(wav: data, to: url)
                 }
             } catch {
                 self?.saveError = error.localizedDescription
