@@ -20,6 +20,10 @@ struct Composer: View {
     /// True when dictation previously failed (e.g. Dictation is off); the mic shows a
     /// disabled look and explains on click instead of trying again.
     var dictationUnavailable: Bool = false
+    /// When set, a button toggles always-on, hands-free conversation mode.
+    var onConversation: (() -> Void)?
+    /// True while conversation mode is active, for the button's state.
+    var conversationActive: Bool = false
 
     @AppStorage(SettingsKey.composerHeight) private var storedHeight = SettingsDefault.composerHeight
     /// Live height while a resize drag is in progress; `nil` when not dragging.
@@ -110,6 +114,9 @@ struct Composer: View {
                 if onMic != nil {
                     micButton
                 }
+                if onConversation != nil {
+                    conversationButton
+                }
                 Spacer()
                 sendStopButton
             }
@@ -185,6 +192,19 @@ struct Composer: View {
         if isDictating { return "Stop dictation" }
         if dictationUnavailable { return "Speech-to-text needs Dictation on — click for details" }
         return "Dictate a message"
+    }
+
+    private var conversationButton: some View {
+        Button {
+            onConversation?()
+        } label: {
+            Image(systemName: conversationActive ? "ear.fill" : "ear")
+                .font(.title3)
+                .foregroundStyle(conversationActive ? Color.accentColor : .secondary)
+                .symbolEffect(.pulse, isActive: conversationActive)
+        }
+        .buttonStyle(.plain)
+        .help(conversationActive ? "Stop conversation mode" : "Conversation mode — always-on, hands-free")
     }
 
     @ViewBuilder

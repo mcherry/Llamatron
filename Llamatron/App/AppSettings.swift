@@ -38,6 +38,10 @@ enum SettingsKey {
     // Speech-to-text dictation (on-device; fills the composer).
     static let dictationAutoSend = "dictationAutoSend"
     static let dictationPauseSeconds = "dictationPauseSeconds"
+    /// Opt-in always-on, hands-free back-and-forth dictation.
+    static let conversationMode = "conversationMode"
+    /// Apple voice processing (noise suppression + echo cancellation) for the mic.
+    static let dictationVoiceProcessing = "dictationVoiceProcessing"
 }
 
 /// Default values for the settings above.
@@ -54,6 +58,7 @@ enum SettingsDefault {
     static let ttsServerURL = "http://localhost:8880"
     static let ttsSpeed = 1.0
     static let dictationPauseSeconds = 1.5
+    static let dictationVoiceProcessing = true
 }
 
 /// Context-window presets offered in the pickers, plus a display formatter.

@@ -40,6 +40,8 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.ttsSpeed) private var ttsSpeed = SettingsDefault.ttsSpeed
     @AppStorage(SettingsKey.dictationAutoSend) private var dictationAutoSend = false
     @AppStorage(SettingsKey.dictationPauseSeconds) private var dictationPauseSeconds = SettingsDefault.dictationPauseSeconds
+    @AppStorage(SettingsKey.conversationMode) private var conversationMode = false
+    @AppStorage(SettingsKey.dictationVoiceProcessing) private var voiceProcessing = SettingsDefault.dictationVoiceProcessing
     @State private var appleVoices: [TTSVoice] = []
     @State private var ttsVoices: [TTSVoice] = []
     @State private var ttsTesting = false
@@ -226,8 +228,14 @@ struct SettingsView: View {
                         Text("Pause: \(dictationPauseSeconds, specifier: "%.1f")s")
                     }
                 }
+                Toggle("Reduce background noise & echo", isOn: $voiceProcessing)
+                Toggle("Conversation mode (always-on, hands-free)", isOn: $conversationMode)
                 Text("Tap the mic in the composer to dictate. Recognition runs on-device when supported. With auto-send off, dictation fills the message box and you send it yourself.")
                     .font(.caption).foregroundStyle(.secondary)
+                if conversationMode {
+                    Text("Adds an ear button to the composer: the mic stays on, sends each utterance after a pause, and listens again after the reply (it pauses while a spoken reply plays). Best paired with “Reduce background noise & echo.”")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Text("Requires Dictation to be turned on in System Settings ▸ Keyboard.")
                     .font(.caption).foregroundStyle(.secondary)
             }

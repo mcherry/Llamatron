@@ -22,12 +22,16 @@ struct ChatView: View {
     @AppStorage(SettingsKey.ttsSpeed) private var ttsSpeed = SettingsDefault.ttsSpeed
     @AppStorage(SettingsKey.dictationAutoSend) private var dictationAutoSend = false
     @AppStorage(SettingsKey.dictationPauseSeconds) private var dictationPauseSeconds = SettingsDefault.dictationPauseSeconds
+    @AppStorage(SettingsKey.conversationMode) private var conversationModeEnabled = false
+    @AppStorage(SettingsKey.dictationVoiceProcessing) private var voiceProcessing = SettingsDefault.dictationVoiceProcessing
 
     @State private var viewModel = ChatViewModel()
     @State private var speech = SpeechController()
     @State private var dictation = DictationController()
     /// The draft text captured when dictation started, so the transcript appends to it.
     @State private var dictationBase = ""
+    /// True while always-on conversation mode is active for this session.
+    @State private var conversationActive = false
     /// True while an auto-TTS reply is generating, so its text is held hidden until
     /// narration begins.
     @State private var narrationArmed = false
@@ -104,21 +108,17 @@ struct ChatView: View {
             dictation.stop()
         }
         .onChange(of: viewModel.isStreaming) { wasStreaming, nowStreaming in
-            // When an auto-TTS reply finishes generating, narrate it: the text stays
-            // hidden (held by `narrationArmed`) until playback starts, then reveals in
-            // step with the audio.
-            guard wasStreaming, !nowStreaming, narrationArmed else { return }
-            guard session.ttsEnabled, session.ttsAutoSpeak, viewModel.errorMessage == nil,
-                  let last = visibleMessages.last, last.role == .assistant, !last.content.isEmpty else {
-                narrationArmed = false   // nothing to narrate — reveal the reply normally
-                return
-            }
-            speech.speak(messageID: last.id, text: last.content, config: ttsConfig, narrate: true)
+            guard wasStreaming, !nowStreaming else { return }
+            handleStreamFinished()
         }
         .onChange(of: speech.narratingMessageID) { _, id in
             // Once narration actually starts, playback progress drives the reveal, so
             // the generation-time hold is no longer needed.
             if id != nil { narrationArmed = false }
+        }
+        .onChange(of: speech.speakingMessageID) { _, id in
+            // A spoken reply finished — in conversation mode, resume listening.
+            if id == nil { maybeResumeConversation() }
         }
         .onChange(of: speech.saveError) { _, message in
             if let message {
@@ -169,15 +169,23 @@ struct ChatView: View {
                  onAttach: { showingImporter = true },
                  onAddWebSource: { showingAddWebSource = true },
                  onWebSearch: { showingWebSearch = true },
-                 onMic: micAction,
+                 onMic: conversationActive ? nil : micAction,
                  isDictating: dictation.isListening,
-                 dictationUnavailable: dictation.isUnavailable)
+                 dictationUnavailable: dictation.isUnavailable,
+                 onConversation: conversationAction,
+                 conversationActive: conversationActive)
     }
 
     /// The mic toggle, or `nil` when speech recognition isn't available.
     private var micAction: (() -> Void)? {
         guard dictation.isSupported else { return nil }
         return { toggleDictation() }
+    }
+
+    /// The conversation toggle, or `nil` when the feature is off or unsupported.
+    private var conversationAction: (() -> Void)? {
+        guard conversationModeEnabled, dictation.isSupported else { return nil }
+        return { toggleConversation() }
     }
 
     // MARK: - Header
@@ -491,8 +499,57 @@ struct ChatView: View {
             dictationBase = draft
             dictation.autoSend = dictationAutoSend
             dictation.silenceSeconds = dictationPauseSeconds
+            dictation.useVoiceProcessing = voiceProcessing
             dictation.start()
         }
+    }
+
+    /// Toggles always-on, hands-free conversation mode for this session.
+    private func toggleConversation() {
+        if conversationActive {
+            conversationActive = false
+            dictation.stop()
+        } else {
+            conversationActive = true
+            startConversationTurn()
+        }
+    }
+
+    /// Opens the mic for the next conversation turn, if nothing else is in progress.
+    private func startConversationTurn() {
+        guard conversationActive, !dictation.isListening, !viewModel.isStreaming,
+              speech.speakingMessageID == nil else { return }
+        dictationBase = ""
+        dictation.autoSend = true
+        dictation.silenceSeconds = dictationPauseSeconds
+        dictation.useVoiceProcessing = voiceProcessing
+        dictation.start()
+    }
+
+    /// Resumes listening after a reply (and any spoken playback) finishes.
+    private func maybeResumeConversation() {
+        guard conversationActive else { return }
+        guard viewModel.errorMessage == nil else {
+            conversationActive = false   // an error stopped the flow; leave conversation
+            return
+        }
+        guard !viewModel.isStreaming, speech.speakingMessageID == nil, !dictation.isListening,
+              draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        startConversationTurn()
+    }
+
+    /// Called when a streaming reply finishes: narrate it for auto-TTS, then (in
+    /// conversation mode) resume listening once any spoken reply is done.
+    private func handleStreamFinished() {
+        if narrationArmed {
+            if session.ttsEnabled, session.ttsAutoSpeak, viewModel.errorMessage == nil,
+               let last = visibleMessages.last, last.role == .assistant, !last.content.isEmpty {
+                speech.speak(messageID: last.id, text: last.content, config: ttsConfig, narrate: true)
+            } else {
+                narrationArmed = false   // nothing to narrate — reveal the reply normally
+            }
+        }
+        if conversationActive { maybeResumeConversation() }
     }
 
     /// Whether auto-TTS will narrate replies (Apple is always ready; the server needs a

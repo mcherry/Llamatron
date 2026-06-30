@@ -32,6 +32,9 @@ final class DictationController {
     var autoSend = false
     /// Silence (no new words) that counts as "done speaking" for auto-send.
     var silenceSeconds: Double = 1.5
+    /// Enable Apple voice processing on the mic (noise suppression + echo cancellation),
+    /// which also stops a TTS reply from being heard as input in conversation mode.
+    var useVoiceProcessing = false
 
     /// Whether speech recognition is usable at all (a recognizer exists for the locale).
     var isSupported: Bool { recognizer != nil }
@@ -131,6 +134,9 @@ final class DictationController {
         // A fresh engine each session avoids stale CoreAudio state from a prior run.
         engine = AVAudioEngine()
         let input = engine.inputNode
+        // Voice processing (echo cancellation + noise suppression) must be enabled before
+        // the engine starts; it can change the input format, so read the format after.
+        if useVoiceProcessing { try? input.setVoiceProcessingEnabled(true) }
         let format = input.outputFormat(forBus: 0)
         // On the first run the HAL may not be ready the instant permission is granted;
         // a zero-channel/zero-rate format would crash `installTap`/`start`.
