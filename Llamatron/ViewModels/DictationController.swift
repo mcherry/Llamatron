@@ -65,11 +65,11 @@ final class DictationController {
     func start() {
         guard !isListening, !starting else { return }
         if isUnavailable {
-            // The last attempt crashed the app. Re-arm but don't try again this click —
-            // tell the user how to fix it first, so we don't immediately crash again.
+            // A prior attempt crashed the app. Re-arm but don't retry on this click, so a
+            // persistent problem can't immediately crash again.
             clearCrashGuard()
             isUnavailable = false
-            errorMessage = "Speech-to-text stopped working last time. Turn on Dictation in System Settings ▸ Keyboard, then click the mic again to retry."
+            errorMessage = "Speech-to-text hit a problem last time and was paused. Click the mic to try again."
             return
         }
         guard let recognizer, recognizer.isAvailable else {
@@ -79,31 +79,50 @@ final class DictationController {
         starting = true
         transcript = ""
         errorMessage = nil
-        Task { @MainActor in
-            let speechStatus = await Self.requestSpeechAuthorization()
-            guard !Task.isCancelled, starting else { return }
-            guard speechStatus == .authorized else {
-                starting = false
-                errorMessage = "Allow speech recognition in System Settings ▸ Privacy & Security to dictate."
-                return
+        // Check the existing authorization status synchronously and only *request* it
+        // when it's genuinely undetermined. Re-requesting speech authorization when it's
+        // already decided crashes inside the Speech framework in a sandboxed app.
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized:
+            requestMicThenBegin()
+        case .notDetermined:
+            SFSpeechRecognizer.requestAuthorization { @Sendable [weak self] status in
+                Task { @MainActor [weak self] in
+                    guard let self, self.starting else { return }
+                    guard status == .authorized else {
+                        self.starting = false
+                        self.errorMessage = "Allow speech recognition in System Settings ▸ Privacy & Security to dictate."
+                        return
+                    }
+                    self.requestMicThenBegin()
+                }
             }
-            let micGranted = await AVCaptureDevice.requestAccess(for: .audio)
-            guard !Task.isCancelled, starting else { return }
-            guard micGranted else {
-                starting = false
-                errorMessage = "Allow microphone access in System Settings ▸ Privacy & Security to dictate."
-                return
-            }
-            beginSession()
+        default:
+            starting = false
+            errorMessage = "Allow speech recognition in System Settings ▸ Privacy & Security to dictate."
         }
     }
 
-    /// Async wrapper over the callback-based speech authorization request.
-    private static func requestSpeechAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
-        await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
-                continuation.resume(returning: status)
+    /// Requests microphone access only if it isn't already decided, then begins the session.
+    private func requestMicThenBegin() {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            beginSession()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { @Sendable [weak self] granted in
+                Task { @MainActor [weak self] in
+                    guard let self, self.starting else { return }
+                    guard granted else {
+                        self.starting = false
+                        self.errorMessage = "Allow microphone access in System Settings ▸ Privacy & Security to dictate."
+                        return
+                    }
+                    self.beginSession()
+                }
             }
+        default:
+            starting = false
+            errorMessage = "Allow microphone access in System Settings ▸ Privacy & Security to dictate."
         }
     }
 
@@ -131,13 +150,16 @@ final class DictationController {
         let sink = AudioSink(request)
         self.sink = sink
 
-        // Arm the crash guard right before the Speech call that can take down the app
-        // (e.g. when Dictation is disabled). Cleared the moment recognition responds.
+        // Arm the crash guard right before recognition starts; cleared the moment it
+        // responds. If a future failure ever takes the app down here, the mic disables
+        // itself next launch instead of crashing again.
         UserDefaults.standard.set(true, forKey: Self.crashGuardKey)
         UserDefaults.standard.synchronize()
 
-        // Start recognition before wiring the microphone, matching Apple's pattern.
-        task = recognizer.recognitionTask(with: request) { [weak self] result, error in
+        // Start recognition before wiring the microphone, matching Apple's pattern. The
+        // handler is @Sendable (nonisolated): the Speech framework calls it on a
+        // background queue, so it must not be main-actor-isolated.
+        task = recognizer.recognitionTask(with: request) { @Sendable [weak self] result, error in
             // Extract only Sendable values before hopping to the main actor.
             let text = result?.bestTranscription.formattedString
             let isFinal = result?.isFinal ?? false
@@ -147,7 +169,7 @@ final class DictationController {
             }
         }
 
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable buffer, _ in
             // Runs on the audio thread; the sink guards against appending after the
             // request has been ended (which would crash).
             sink.append(buffer)
@@ -183,10 +205,9 @@ final class DictationController {
             }
             stop()
         } else if failed {
-            // Surface why only if nothing was transcribed (the common cause is that
-            // Dictation is turned off system-wide, which disables recognition).
+            // The recognition task ended with an error and produced nothing usable.
             if transcript.isEmpty {
-                errorMessage = "Couldn't start speech recognition. Turn on Dictation in System Settings ▸ Keyboard, then try again."
+                errorMessage = "Speech recognition didn't catch anything. Try the mic again."
             }
             stop()
         }
