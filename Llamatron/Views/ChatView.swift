@@ -260,7 +260,9 @@ struct ChatView: View {
             .buttonStyle(.borderless)
         }
         .padding(10)
-        .background(.orange.opacity(0.12))
+        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
     }
 
     // MARK: - Context info + attachments
