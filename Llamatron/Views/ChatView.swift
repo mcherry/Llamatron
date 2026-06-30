@@ -23,6 +23,9 @@ struct ChatView: View {
 
     @State private var viewModel = ChatViewModel()
     @State private var speech = SpeechController()
+    /// True while an auto-TTS reply is generating, so its text is held hidden until
+    /// narration begins.
+    @State private var narrationArmed = false
     @State private var draft = ""
     @State private var showingConfig = false
     @State private var showingImporter = false
@@ -100,11 +103,21 @@ struct ChatView: View {
         .task(id: serverURL) { await loadVisionCapabilities() }
         .onDisappear { speech.stop() }
         .onChange(of: viewModel.isStreaming) { wasStreaming, nowStreaming in
-            // Auto-speak a finished reply when the session opted in.
-            guard wasStreaming, !nowStreaming else { return }
-            guard session.ttsEnabled, session.ttsAutoSpeak, viewModel.errorMessage == nil else { return }
-            guard let last = visibleMessages.last, last.role == .assistant, !last.content.isEmpty else { return }
-            speech.speak(messageID: last.id, text: last.content, config: ttsConfig)
+            // When an auto-TTS reply finishes generating, narrate it: the text stays
+            // hidden (held by `narrationArmed`) until playback starts, then reveals in
+            // step with the audio.
+            guard wasStreaming, !nowStreaming, narrationArmed else { return }
+            guard session.ttsEnabled, session.ttsAutoSpeak, viewModel.errorMessage == nil,
+                  let last = visibleMessages.last, last.role == .assistant, !last.content.isEmpty else {
+                narrationArmed = false   // nothing to narrate — reveal the reply normally
+                return
+            }
+            speech.speak(messageID: last.id, text: last.content, config: ttsConfig, narrate: true)
+        }
+        .onChange(of: speech.narratingMessageID) { _, id in
+            // Once narration actually starts, playback progress drives the reveal, so
+            // the generation-time hold is no longer needed.
+            if id != nil { narrationArmed = false }
         }
         .onChange(of: speech.saveError) { _, message in
             if let message {
@@ -198,7 +211,8 @@ struct ChatView: View {
                                        onToggleSpeak: speakEnabled(message) ? { toggleSpeak(message) } : nil,
                                        isSaving: speech.savingMessageID == message.id,
                                        onSaveAudio: speakEnabled(message) ? { saveAudio(message) } : nil,
-                                       onRegenerate: regenerateEnabled(message) ? { regenerate(message) } : nil)
+                                       onRegenerate: regenerateEnabled(message) ? { regenerate(message) } : nil,
+                                       revealedCharacters: revealedCharacters(for: message))
                                 .id(message.id)
                         }
                     }
@@ -209,6 +223,12 @@ struct ChatView: View {
                 .padding()
             }
             .onChange(of: streamingTick) {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo(bottomAnchor, anchor: .bottom)
+                }
+            }
+            .onChange(of: speech.narrationProgress) {
+                // Keep the revealing narrated reply in view as it plays.
                 withAnimation(.easeOut(duration: 0.15)) {
                     proxy.scrollTo(bottomAnchor, anchor: .bottom)
                 }
@@ -389,6 +409,9 @@ struct ChatView: View {
                                   timeout: TimeInterval(requestTimeout))
         let text = draft
         draft = ""
+        speech.stop()
+        // Hold the upcoming reply hidden until narration starts, when auto-TTS is on.
+        narrationArmed = narrationEngineReady
         viewModel.send(text: text,
                        session: session,
                        client: client,
@@ -415,6 +438,30 @@ struct ChatView: View {
 
     private func toggleSpeak(_ message: ChatMessage) {
         speech.toggle(messageID: message.id, text: message.content, config: ttsConfig)
+    }
+
+    /// Whether auto-TTS will narrate replies (Apple is always ready; the server needs a
+    /// URL + voice). When true, a generating reply is held hidden until its audio plays.
+    private var narrationEngineReady: Bool {
+        guard session.ttsEnabled, session.ttsAutoSpeak else { return false }
+        switch session.ttsEngine {
+        case .apple: return true
+        case .server: return TTS.isConfigured(enabled: true, serverURL: ttsServerURL) && !ttsVoice.isEmpty
+        }
+    }
+
+    /// How much of a reply to reveal: the whole thing normally; nothing while a narrated
+    /// reply is buffered; a growing prefix as its audio plays.
+    private func revealedCharacters(for message: ChatMessage) -> Int? {
+        guard message.role == .assistant else { return nil }
+        if speech.narratingMessageID == message.id {
+            return SpeechController.revealedCount(progress: speech.narrationProgress,
+                                                  total: message.content.count)
+        }
+        if narrationArmed && message.id == visibleMessages.last?.id {
+            return 0
+        }
+        return nil
     }
 
     /// Whether the inspector should offer "Regenerate" for this image reply.

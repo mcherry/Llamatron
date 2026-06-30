@@ -54,4 +54,16 @@ final class TTSTests: XCTestCase {
         XCTAssertLessThanOrEqual(SpeechController.appleRate(for: 5.0), AVSpeechUtteranceMaximumSpeechRate)
         XCTAssertGreaterThanOrEqual(SpeechController.appleRate(for: 0.01), AVSpeechUtteranceMinimumSpeechRate)
     }
+
+    func testRevealedCountMapsProgressToCharacters() {
+        XCTAssertEqual(SpeechController.revealedCount(progress: 0, total: 100), 0)
+        XCTAssertEqual(SpeechController.revealedCount(progress: 0.5, total: 100), 50)
+        XCTAssertEqual(SpeechController.revealedCount(progress: 1, total: 100), 100)
+    }
+
+    func testRevealedCountClampsOutOfRange() {
+        XCTAssertEqual(SpeechController.revealedCount(progress: -0.2, total: 100), 0)
+        XCTAssertEqual(SpeechController.revealedCount(progress: 1.5, total: 100), 100)
+        XCTAssertEqual(SpeechController.revealedCount(progress: 0.5, total: 0), 0)
+    }
 }

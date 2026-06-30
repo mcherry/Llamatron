@@ -20,6 +20,9 @@ struct MessageRow: View {
     var onSaveAudio: (() -> Void)?
     /// When set (image replies), the inspector offers a "Regenerate" action.
     var onRegenerate: (() -> Void)?
+    /// When set, only the first N characters of the reply are shown — used to reveal a
+    /// narrated reply in step with its audio. `nil` shows the whole reply.
+    var revealedCharacters: Int?
     @State private var hovering = false
     @State private var thinkingExpanded = false
     @State private var showingInspector = false
@@ -161,8 +164,10 @@ struct MessageRow: View {
                 if let data = message.generatedImageData, let nsImage = NSImage(data: data) {
                     generatedImage(nsImage)
                 }
-                if !message.content.isEmpty {
-                    MarkdownView(text: message.content, renderDiagrams: !isGenerating)
+                if isHoldingForNarration {
+                    narrationPlaceholder
+                } else if !displayedContent.isEmpty {
+                    MarkdownView(text: displayedContent, renderDiagrams: !isGenerating)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else if message.thinking.isEmpty && message.generatedImageData == nil {
@@ -184,6 +189,31 @@ struct MessageRow: View {
                 if !isEmpty { thinkingExpanded = false }
             }
         }
+    }
+
+    /// The portion of the reply to display: the whole reply normally, or a growing
+    /// prefix while a narration reveals it in step with the audio.
+    private var displayedContent: String {
+        guard let n = revealedCharacters else { return message.content }
+        if n <= 0 { return "" }
+        if n >= message.content.count { return message.content }
+        return String(message.content.prefix(n))
+    }
+
+    /// True while a narrated reply is buffered, waiting for its audio to start.
+    private var isHoldingForNarration: Bool {
+        revealedCharacters == 0 && !message.content.isEmpty
+    }
+
+    /// Placeholder shown while a narrated reply waits for audio to begin.
+    private var narrationPlaceholder: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "waveform")
+            Text("Preparing narration…")
+            ProgressView().controlSize(.small)
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
     }
 
     /// Shown when the model stopped because it hit the context window (`done_reason:
