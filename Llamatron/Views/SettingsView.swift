@@ -233,7 +233,7 @@ struct SettingsView: View {
                 Text("Tap the mic in the composer to dictate. Recognition runs on-device when supported. With auto-send off, dictation fills the message box and you send it yourself.")
                     .font(.caption).foregroundStyle(.secondary)
                 if conversationMode {
-                    Text("Adds an ear button to the composer: the mic stays on, sends each utterance after a pause, and listens again after the reply (it pauses while a spoken reply plays). Best paired with “Reduce background noise & echo.”")
+                    Text("Adds an ear button to the composer: the mic stays on, sends each utterance after a pause, and listens again after the reply (it pauses while a spoken reply plays).")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Text("Requires Dictation to be turned on in System Settings ▸ Keyboard.")

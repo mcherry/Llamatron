@@ -32,8 +32,8 @@ final class DictationController {
     var autoSend = false
     /// Silence (no new words) that counts as "done speaking" for auto-send.
     var silenceSeconds: Double = 1.5
-    /// Enable Apple voice processing on the mic (noise suppression + echo cancellation),
-    /// which also stops a TTS reply from being heard as input in conversation mode.
+    /// Enable Apple voice processing on the mic (noise suppression + echo cancellation).
+    /// It can present a multi-channel input, which is downmixed to mono for the recognizer.
     var useVoiceProcessing = false
 
     /// Whether speech recognition is usable at all (a recognizer exists for the locale).
@@ -153,7 +153,12 @@ final class DictationController {
             request.requiresOnDeviceRecognition = true
         }
         self.request = request
-        let sink = AudioSink(request)
+        // Voice processing can present a multi-channel input (e.g. 9 ch here), but the
+        // recognizer needs mono — downmix in the sink when the input isn't already mono.
+        let monoFormat = format.channelCount > 1
+            ? AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: format.sampleRate, channels: 1, interleaved: false)
+            : nil
+        let sink = AudioSink(request, monoFormat: monoFormat)
         self.sink = sink
 
         // Arm the crash guard right before recognition starts; cleared the moment it
@@ -279,12 +284,33 @@ final class DictationController {
 private final class AudioSink: @unchecked Sendable {
     private let lock = NSLock()
     private var request: SFSpeechAudioBufferRecognitionRequest?
+    /// Set when the input is multi-channel (e.g. with voice processing on); buffers are
+    /// downmixed to this mono format before the recognizer sees them.
+    private let monoFormat: AVAudioFormat?
 
-    init(_ request: SFSpeechAudioBufferRecognitionRequest) { self.request = request }
+    init(_ request: SFSpeechAudioBufferRecognitionRequest, monoFormat: AVAudioFormat? = nil) {
+        self.request = request
+        self.monoFormat = monoFormat
+    }
 
     func append(_ buffer: AVAudioPCMBuffer) {
+        let toAppend = monoFormat.flatMap { Self.mono(buffer, to: $0) } ?? buffer
         lock.lock(); defer { lock.unlock() }
-        request?.append(buffer)
+        request?.append(toAppend)
+    }
+
+    /// Copies the primary (first) channel into a mono buffer at the same sample rate.
+    /// The recognizer rejects multi-channel audio, which voice processing can produce.
+    private static func mono(_ buffer: AVAudioPCMBuffer, to format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        guard let src = buffer.floatChannelData, buffer.format.channelCount > 1 else { return nil }
+        let frames = Int(buffer.frameLength)
+        guard frames > 0,
+              let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: buffer.frameLength) else { return nil }
+        out.frameLength = buffer.frameLength
+        let dst = out.floatChannelData![0]
+        let ch0 = src[0]
+        for f in 0..<frames { dst[f] = ch0[f] }
+        return out
     }
 
     func finish() {
