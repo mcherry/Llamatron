@@ -27,6 +27,13 @@ enum SettingsKey {
     static let imageSize = "imageSize"
     static let imageCFG = "imageCFG"
     static let imageNegativePrompt = "imageNegativePrompt"
+
+    // Text-to-speech (app-level engine config; per-chat enable/engine live on ChatSession).
+    static let ttsEngine = "ttsEngine"
+    static let ttsAppleVoice = "ttsAppleVoice"
+    static let ttsServerURL = "ttsServerURL"
+    static let ttsVoice = "ttsVoice"
+    static let ttsSpeed = "ttsSpeed"
 }
 
 /// Default values for the settings above.
@@ -40,6 +47,8 @@ enum SettingsDefault {
     static let imageSteps = 20
     static let imageSize = 640
     static let imageCFG = 7.5
+    static let ttsServerURL = "http://localhost:8880"
+    static let ttsSpeed = 1.0
 }
 
 /// Context-window presets offered in the pickers, plus a display formatter.

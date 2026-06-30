@@ -33,6 +33,17 @@ struct SettingsView: View {
     @State private var imageTestStatus: String?
     @State private var imageTestOK = false
 
+    @AppStorage(SettingsKey.ttsEngine) private var ttsEngine = TTSEngine.apple.rawValue
+    @AppStorage(SettingsKey.ttsAppleVoice) private var ttsAppleVoice = ""
+    @AppStorage(SettingsKey.ttsServerURL) private var ttsServerURL = SettingsDefault.ttsServerURL
+    @AppStorage(SettingsKey.ttsVoice) private var ttsVoice = ""
+    @AppStorage(SettingsKey.ttsSpeed) private var ttsSpeed = SettingsDefault.ttsSpeed
+    @State private var appleVoices: [TTSVoice] = []
+    @State private var ttsVoices: [TTSVoice] = []
+    @State private var ttsTesting = false
+    @State private var ttsTestStatus: String?
+    @State private var ttsTestOK = false
+
     private var chatModels: [OllamaModel] {
         allModels.filter { !$0.isEmbeddingModel }
     }
@@ -163,6 +174,49 @@ struct SettingsView: View {
                         .lineLimit(1...3)
                 }
             }
+            Section("Text-to-Speech") {
+                Picker("Engine", selection: $ttsEngine) {
+                    ForEach(TTSEngine.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                if ttsEngine == TTSEngine.apple.rawValue {
+                    Picker("Voice", selection: $ttsAppleVoice) {
+                        Text("System default").tag("")
+                        ForEach(appleVoices) { Text($0.name).tag($0.id) }
+                        if !ttsAppleVoice.isEmpty, !appleVoices.contains(where: { $0.id == ttsAppleVoice }) {
+                            Text(ttsAppleVoice).tag(ttsAppleVoice)
+                        }
+                    }
+                    Text("Speaks replies on-device — no server needed.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    TextField("Kokoro server URL", text: $ttsServerURL)
+                        .autocorrectionDisabled()
+                    HStack(spacing: 8) {
+                        Button("Test") { Task { await testTTSServer() } }
+                            .disabled(ttsTesting || ttsServerURL.isEmpty)
+                        if ttsTesting { ProgressView().controlSize(.small) }
+                        if let status = ttsTestStatus {
+                            Label(status, systemImage: ttsTestOK ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .foregroundStyle(ttsTestOK ? .green : .red)
+                                .font(.caption).lineLimit(2)
+                        }
+                    }
+                    Picker("Voice", selection: $ttsVoice) {
+                        Text("None").tag("")
+                        ForEach(ttsVoices) { Text($0.name).tag($0.id) }
+                        if !ttsVoice.isEmpty, !ttsVoices.contains(where: { $0.id == ttsVoice }) {
+                            Text(ttsVoice).tag(ttsVoice)
+                        }
+                    }
+                    Text("A local Kokoro-FastAPI server (OpenAI-compatible). Run Test to load voices.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Stepper(value: $ttsSpeed, in: 0.5...2.0, step: 0.1) {
+                    Text("Speed: \(ttsSpeed, specifier: "%.1f")×")
+                }
+                Text("Enable speech per chat in Session Settings (with an optional auto-speak).")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Rendering") {
                 Toggle("Guide models to render diagrams inline", isOn: $diagramGuidance)
                 Text("Adds a short system instruction so models emit valid Mermaid diagrams (quoted labels) and skip “paste into an online editor” notes. Diagrams render inline in the chat. Appears in the request payload, visible in the turn inspector.")
@@ -171,8 +225,11 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480, height: 560)
-        .task { await loadModels() }
+        .frame(width: 480, height: 600)
+        .task {
+            appleVoices = AppleSpeech.voices()
+            await loadModels()
+        }
         .sheet(isPresented: $showingModelManager) {
             ModelManagementView(serverURL: serverURL)
         }
@@ -207,5 +264,24 @@ struct SettingsView: View {
             imageTestStatus = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach the server."
         }
         imageTesting = false
+    }
+
+    private func testTTSServer() async {
+        ttsTesting = true
+        ttsTestStatus = nil
+        let provider = KokoroTTSProvider(baseURLString: ttsServerURL)
+        do {
+            let voices = try await provider.listVoices().sorted { $0.name < $1.name }
+            ttsVoices = voices
+            ttsTestOK = !voices.isEmpty
+            ttsTestStatus = voices.isEmpty
+                ? "Connected, but found no voices."
+                : "Found \(voices.count) voice\(voices.count == 1 ? "" : "s")."
+            if ttsVoice.isEmpty, let first = voices.first { ttsVoice = first.id }
+        } catch {
+            ttsTestOK = false
+            ttsTestStatus = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach the server."
+        }
+        ttsTesting = false
     }
 }
