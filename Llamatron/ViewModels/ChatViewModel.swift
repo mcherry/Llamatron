@@ -147,22 +147,6 @@ final class ChatViewModel {
                                serverURL: String,
                                backendKindRaw: String,
                                modelContext: ModelContext) {
-        guard ImageGen.isConfigured(enabled: true, serverURL: serverURL) else {
-            errorMessage = "Set an image server URL in Settings → Image Generation."
-            return
-        }
-        errorMessage = nil
-        contextInfo = nil
-
-        let userMessage = ChatMessage(role: .user, content: text)
-        userMessage.session = session
-        modelContext.insert(userMessage)
-
-        let assistant = ChatMessage(role: .assistant, content: "")
-        assistant.session = session
-        modelContext.insert(assistant)
-        session.updatedAt = .now
-
         let request = ImageRequest(prompt: text,
                                    negativePrompt: session.imageNegativePrompt,
                                    model: session.imageModel,
@@ -172,6 +156,56 @@ final class ChatViewModel {
                                    cfgScale: session.imageCFG,
                                    vae: session.imageVAE,
                                    seed: session.imageSeed)
+        runImageGeneration(request: request, session: session, serverURL: serverURL,
+                           backendKindRaw: backendKindRaw, modelContext: modelContext)
+    }
+
+    /// Re-renders a previously generated image as a new turn, reusing its prompt and
+    /// parameters but rolling a fresh random seed (so the result differs).
+    func regenerateImage(from message: ChatMessage,
+                         session: ChatSession,
+                         serverURL: String,
+                         backendKindRaw: String,
+                         modelContext: ModelContext) {
+        guard !isStreaming, let info = message.imageGenInfo else { return }
+        var request = ImageRequest(prompt: info.prompt,
+                                   negativePrompt: info.negativePrompt,
+                                   model: info.model,
+                                   steps: info.steps,
+                                   width: info.width,
+                                   height: info.height,
+                                   cfgScale: info.cfgScale,
+                                   vae: info.vae,
+                                   seed: nil)
+        request.seed = Int.random(in: 0...Int(UInt32.max))
+        runImageGeneration(request: request, session: session, serverURL: serverURL,
+                           backendKindRaw: backendKindRaw, modelContext: modelContext)
+    }
+
+    /// Shared image-generation flow: insert the prompt + assistant turns, render the
+    /// request off-main, and store the PNG and its parameters on the assistant message.
+    private func runImageGeneration(request: ImageRequest,
+                                    session: ChatSession,
+                                    serverURL: String,
+                                    backendKindRaw: String,
+                                    modelContext: ModelContext) {
+        guard ImageGen.isConfigured(enabled: true, serverURL: serverURL) else {
+            errorMessage = "Set an image server URL in Settings → Image Generation."
+            return
+        }
+        errorMessage = nil
+        contextInfo = nil
+
+        let userMessage = ChatMessage(role: .user, content: request.prompt)
+        userMessage.session = session
+        modelContext.insert(userMessage)
+
+        let assistant = ChatMessage(role: .assistant, content: "")
+        assistant.session = session
+        assistant.imageGenInfo = ImageGenInfo(request)
+        modelContext.insert(assistant)
+        session.updatedAt = .now
+
         let provider = (ImageBackendKind(rawValue: backendKindRaw) ?? .easyDiffusion)
             .makeProvider(baseURLString: serverURL)
 

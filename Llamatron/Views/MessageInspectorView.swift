@@ -4,6 +4,8 @@ import SwiftUI
 /// relevance scores, and the exact request payload that produced the reply.
 struct MessageInspectorView: View {
     let message: ChatMessage
+    /// When set, a "Regenerate" action re-renders this image with a fresh seed.
+    var onRegenerate: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -19,6 +21,9 @@ struct MessageInspectorView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    if let info = message.imageGenInfo {
+                        imageSection(info)
+                    }
                     metricsSection
                     if let vision = message.visionNote {
                         visionSection(vision)
@@ -77,6 +82,46 @@ struct MessageInspectorView: View {
             Text(note)
                 .font(.callout)
                 .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: - Image generation
+
+    private func imageSection(_ info: ImageGenInfo) -> some View {
+        section("Image", systemImage: "photo") {
+            VStack(alignment: .leading, spacing: 8) {
+                imageRow("Prompt", info.prompt)
+                if !info.negativePrompt.isEmpty {
+                    imageRow("Negative", info.negativePrompt)
+                }
+                metricRow("Model", info.model.isEmpty ? nil : info.model)
+                metricRow("Size", info.sizeLabel)
+                metricRow("Steps", "\(info.steps)")
+                metricRow("CFG", String(format: "%.1f", info.cfgScale))
+                metricRow("Seed", info.seed.map { "\($0)" } ?? "random")
+                if let onRegenerate {
+                    Button {
+                        onRegenerate()
+                        dismiss()
+                    } label: {
+                        Label("Regenerate (fresh seed)", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .padding(.top, 2)
+                }
+            }
+        }
+    }
+
+    /// A label above a wrapping, selectable value — for long fields like the prompt.
+    private func imageRow(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

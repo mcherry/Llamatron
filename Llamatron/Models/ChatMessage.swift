@@ -49,6 +49,9 @@ final class ChatMessage {
     /// PNG bytes of an image generated for this assistant turn (the image-generation
     /// backend). `nil` for text replies and user turns.
     var generatedImageData: Data?
+    /// Encoded `ImageGenInfo` (prompt + parameters) for a generated image, for the turn
+    /// inspector and "Regenerate". `nil` for text replies and user turns.
+    var imageGenData: Data?
 
     /// Inverse side of `ChatSession.messages`.
     var session: ChatSession?
@@ -77,10 +80,16 @@ final class ChatMessage {
         return (try? JSONDecoder().decode([RetrievedChunkInfo].self, from: historyRetrievalData)) ?? []
     }
 
+    /// Typed view over `imageGenData`: the prompt + parameters of a generated image.
+    var imageGenInfo: ImageGenInfo? {
+        get { imageGenData.flatMap { try? JSONDecoder().decode(ImageGenInfo.self, from: $0) } }
+        set { imageGenData = newValue.flatMap { try? JSONEncoder().encode($0) } }
+    }
+
     /// Whether this message has any inspector data to show.
     var hasInspectorData: Bool {
         requestPayload != nil || !retrievedChunks.isEmpty || firstTokenSeconds != nil
-            || historyNote != nil || visionNote != nil
+            || historyNote != nil || visionNote != nil || imageGenData != nil
     }
 
     /// Time-to-first-token as a compact label, e.g. "0.4s".

@@ -197,7 +197,8 @@ struct ChatView: View {
                                        isSpeaking: speech.speakingMessageID == message.id,
                                        onToggleSpeak: speakEnabled(message) ? { toggleSpeak(message) } : nil,
                                        isSaving: speech.savingMessageID == message.id,
-                                       onSaveAudio: speakEnabled(message) ? { saveAudio(message) } : nil)
+                                       onSaveAudio: speakEnabled(message) ? { saveAudio(message) } : nil,
+                                       onRegenerate: regenerateEnabled(message) ? { regenerate(message) } : nil)
                                 .id(message.id)
                         }
                     }
@@ -414,6 +415,19 @@ struct ChatView: View {
 
     private func toggleSpeak(_ message: ChatMessage) {
         speech.toggle(messageID: message.id, text: message.content, config: ttsConfig)
+    }
+
+    /// Whether the inspector should offer "Regenerate" for this image reply.
+    private func regenerateEnabled(_ message: ChatMessage) -> Bool {
+        session.backend == .imageGeneration && message.imageGenInfo != nil && !viewModel.isStreaming
+    }
+
+    private func regenerate(_ message: ChatMessage) {
+        viewModel.regenerateImage(from: message,
+                                  session: session,
+                                  serverURL: imageServerURL,
+                                  backendKindRaw: imageBackendKind,
+                                  modelContext: modelContext)
     }
 
     private func saveAudio(_ message: ChatMessage) {

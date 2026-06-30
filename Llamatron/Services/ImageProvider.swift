@@ -24,6 +24,50 @@ struct ImageRequest: Sendable {
     var seed: Int?
 }
 
+/// A snapshot of the parameters that produced a generated image, stored on the
+/// assistant message for the turn inspector and for "Regenerate". Codable so it can be
+/// persisted compactly on `ChatMessage` (see `ChatMessage.imageGenInfo`).
+struct ImageGenInfo: Codable, Sendable {
+    var prompt: String
+    var negativePrompt: String
+    var model: String
+    var width: Int
+    var height: Int
+    var steps: Int
+    var cfgScale: Double
+    var vae: String
+    var seed: Int?
+
+    init(prompt: String, negativePrompt: String, model: String, width: Int, height: Int,
+         steps: Int, cfgScale: Double, vae: String, seed: Int?) {
+        self.prompt = prompt
+        self.negativePrompt = negativePrompt
+        self.model = model
+        self.width = width
+        self.height = height
+        self.steps = steps
+        self.cfgScale = cfgScale
+        self.vae = vae
+        self.seed = seed
+    }
+
+    /// Captures the parameters of a request that was sent.
+    init(_ request: ImageRequest) {
+        prompt = request.prompt
+        negativePrompt = request.negativePrompt
+        model = request.model
+        width = request.width
+        height = request.height
+        steps = request.steps
+        cfgScale = request.cfgScale
+        vae = request.vae
+        seed = request.seed
+    }
+
+    /// `"WIDTHxHEIGHT"`, for display.
+    var sizeLabel: String { "\(width)x\(height)" }
+}
+
 /// Errors surfaced by the image-generation layer.
 enum ImageGenError: LocalizedError {
     case invalidURL

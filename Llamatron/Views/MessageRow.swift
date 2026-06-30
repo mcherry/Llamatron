@@ -18,6 +18,8 @@ struct MessageRow: View {
     var isSaving: Bool = false
     /// When set, a button saves this reply's audio to an `.m4a` file.
     var onSaveAudio: (() -> Void)?
+    /// When set (image replies), the inspector offers a "Regenerate" action.
+    var onRegenerate: (() -> Void)?
     @State private var hovering = false
     @State private var thinkingExpanded = false
     @State private var showingInspector = false
@@ -127,7 +129,7 @@ struct MessageRow: View {
         .opacity(hovering ? 1 : 0)
         .allowsHitTesting(hovering)
         .sheet(isPresented: $showingInspector) {
-            MessageInspectorView(message: message)
+            MessageInspectorView(message: message, onRegenerate: onRegenerate)
         }
     }
 
@@ -175,6 +177,11 @@ struct MessageRow: View {
                 // Auto-expand reasoning while it streams in; leave finished replies
                 // collapsed so the transcript stays clean.
                 thinkingExpanded = isGenerating && message.content.isEmpty
+            }
+            .onChange(of: message.content.isEmpty) { _, isEmpty in
+                // The moment the reply itself starts arriving, the thinking pass is
+                // finished — collapse it so the answer takes focus.
+                if !isEmpty { thinkingExpanded = false }
             }
         }
     }
