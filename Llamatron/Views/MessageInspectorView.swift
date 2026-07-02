@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 
 /// Per-turn inspector: latency/token metrics, the retrieved context chunks with
 /// relevance scores, and the exact request payload that produced the reply.

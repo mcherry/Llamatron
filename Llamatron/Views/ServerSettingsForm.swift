@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 
 /// Server address field plus a live "Test Connection" button. Shared by the
 /// first-run setup and the Settings window so the logic lives in one place.
