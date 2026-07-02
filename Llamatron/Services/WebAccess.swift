@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 
 /// Spaces requests to each host so the app is a polite web citizen — a per-host minimum
 /// interval. An `actor`, so reservations are made atomically (concurrent callers for the

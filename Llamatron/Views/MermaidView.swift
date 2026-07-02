@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 import WebKit
 
 /// Renders a Mermaid diagram produced by a model. A "diagram" is just text the model

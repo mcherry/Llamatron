@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 
 /// Inline Markdown helpers. Block structure is handled by `MarkdownParser` /
 /// `MarkdownView`; this only renders the inline span of a single block (bold,

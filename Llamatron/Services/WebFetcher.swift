@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 
 /// Fetches a single web page for context, hardened for a manual, user-triggered flow:
 /// http/https only, a real User-Agent, a timeout, a content-type check, and a size cap.

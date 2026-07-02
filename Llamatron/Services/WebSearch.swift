@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 
 /// Web search for context, **provider-agnostic** and using only *sanctioned* APIs — never
 /// scraping a search engine's HTML (which is what gets blocked). The user picks a provider

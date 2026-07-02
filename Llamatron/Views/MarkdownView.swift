@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 
 /// Renders Markdown text as a stack of native SwiftUI views: headings, paragraphs,
 /// fenced code blocks (monospaced, horizontally scrollable, with a copy button),

@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 
 /// Adds a source to the current session: fetch a **web page** (hardened, manual fetch →
 /// readability-lite plain text) or **paste text** directly. The result is handed back as a

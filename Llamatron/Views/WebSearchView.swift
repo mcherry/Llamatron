@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 
 /// Searches the web for sources via a configured provider (Settings → Web Search), shows
 /// the results, and adds the ones you pick — fetching each through `WebAccess`, so
