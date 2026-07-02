@@ -308,7 +308,7 @@ struct SettingsView: View {
     private func testTTSServer() async {
         ttsTesting = true
         ttsTestStatus = nil
-        let provider = KokoroTTSProvider(baseURLString: ttsServerURL)
+        let provider = TTS.serverProvider(baseURLString: ttsServerURL)
         do {
             let voices = try await provider.listVoices().sorted { $0.name < $1.name }
             ttsVoices = voices
