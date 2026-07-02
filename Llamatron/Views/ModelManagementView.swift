@@ -7,17 +7,8 @@ import LlamaEngine
 struct ModelManagementView: View {
     let serverURL: String
 
-    @State private var models: [OllamaModel] = []
-    @State private var running: Set<String> = []
-    @State private var loading = false
-    @State private var loadError: String?
-
+    @State private var manager = ModelManager()
     @State private var pullName = ""
-    @State private var pulling = false
-    @State private var pullStatus = ""
-    @State private var pullFraction: Double?
-    @State private var pullTask: Task<Void, Never>?
-
     @State private var modelPendingDelete: OllamaModel?
 
     var body: some View {
@@ -29,12 +20,12 @@ struct ModelManagementView: View {
         }
         .padding()
         .frame(width: 520, height: 480)
-        .task { await reload() }
+        .task { await manager.reload(serverURL: serverURL) }
         .confirmationDialog("Delete this model?",
                             isPresented: deletePresented,
                             presenting: modelPendingDelete) { model in
             Button("Delete \(model.name)", role: .destructive) {
-                Task { await delete(model) }
+                Task { await manager.delete(model.name, serverURL: serverURL) }
             }
             Button("Cancel", role: .cancel) {}
         } message: { model in
@@ -46,13 +37,13 @@ struct ModelManagementView: View {
         HStack {
             Text("Manage Models").font(.headline)
             Spacer()
-            if loading { ProgressView().controlSize(.small) }
+            if manager.isLoading { ProgressView().controlSize(.small) }
             Button {
-                Task { await reload() }
+                Task { await manager.reload(serverURL: serverURL) }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
-            .disabled(loading)
+            .disabled(manager.isLoading)
             .help("Refresh")
         }
     }
@@ -64,27 +55,27 @@ struct ModelManagementView: View {
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     .onSubmit(startPull)
-                if pulling {
-                    Button("Stop", role: .cancel) { pullTask?.cancel() }
+                if manager.isPulling {
+                    Button("Stop", role: .cancel) { manager.cancelPull() }
                 } else {
                     Button("Pull", action: startPull)
                         .disabled(pullName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
-            if pulling || pullFraction != nil {
+            if manager.isPulling || manager.pullFraction != nil {
                 VStack(alignment: .leading, spacing: 2) {
-                    if let fraction = pullFraction {
+                    if let fraction = manager.pullFraction {
                         ProgressView(value: fraction)
-                    } else if pulling {
+                    } else if manager.isPulling {
                         ProgressView()
                     }
-                    Text(pullStatus)
+                    Text(manager.pullStatus)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
-            if let loadError {
+            if let loadError = manager.errorMessage {
                 Label(loadError, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -94,11 +85,11 @@ struct ModelManagementView: View {
 
     private var modelList: some View {
         List {
-            if models.isEmpty && !loading {
+            if manager.models.isEmpty && !manager.isLoading {
                 Text("No models on the server.")
                     .foregroundStyle(.secondary)
             }
-            ForEach(models) { model in
+            ForEach(manager.models) { model in
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.name)
@@ -106,7 +97,7 @@ struct ModelManagementView: View {
                             if let size = model.sizeLabel {
                                 Text(size)
                             }
-                            if running.contains(model.name) {
+                            if manager.isRunning(model.name) {
                                 Label("Loaded", systemImage: "memorychip")
                                     .foregroundStyle(.green)
                             }
@@ -135,54 +126,7 @@ struct ModelManagementView: View {
                 set: { if !$0 { modelPendingDelete = nil } })
     }
 
-    private func reload() async {
-        guard let client = OllamaClient(baseURLString: serverURL) else {
-            loadError = "Invalid server URL. Check Settings."
-            return
-        }
-        loading = true
-        loadError = nil
-        do {
-            models = try await client.models().sorted { $0.name < $1.name }
-            running = Set((try? await client.runningModels())?.map(\.name) ?? [])
-        } catch {
-            loadError = error.localizedDescription
-        }
-        loading = false
-    }
-
     private func startPull() {
-        let name = pullName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, let client = OllamaClient(baseURLString: serverURL) else { return }
-        pulling = true
-        pullStatus = "Starting…"
-        pullFraction = nil
-        loadError = nil
-        pullTask = Task {
-            do {
-                for try await progress in client.pullModel(name) {
-                    pullStatus = progress.status
-                    pullFraction = progress.fraction
-                }
-                pullStatus = "Done"
-            } catch is CancellationError {
-                pullStatus = "Cancelled"
-            } catch {
-                loadError = error.localizedDescription
-            }
-            pulling = false
-            pullFraction = nil
-            await reload()
-        }
-    }
-
-    private func delete(_ model: OllamaModel) async {
-        guard let client = OllamaClient(baseURLString: serverURL) else { return }
-        do {
-            try await client.deleteModel(model.name)
-            await reload()
-        } catch {
-            loadError = error.localizedDescription
-        }
+        manager.pull(pullName, serverURL: serverURL)
     }
 }

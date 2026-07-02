@@ -608,26 +608,7 @@ struct ChatView: View {
 
     /// Builds the export document for the chosen format and presents the save panel.
     private func startExport(_ format: ExportFormat) {
-        let snapshot = SessionExporter.Session(
-            title: session.title,
-            backend: session.backend.label,
-            model: session.modelName,
-            contextSize: session.contextSize,
-            systemPrompt: session.systemPrompt,
-            createdAt: session.createdAt,
-            turns: session.orderedMessages
-                .filter { $0.role != .system }
-                .map { msg in
-                    SessionExporter.Turn(role: msg.role.rawValue,
-                                         content: msg.content,
-                                         thinking: msg.thinking,
-                                         createdAt: msg.createdAt,
-                                         promptTokens: msg.promptTokens,
-                                         evalTokens: msg.evalTokens,
-                                         generationSeconds: msg.generationSeconds,
-                                         firstTokenSeconds: msg.firstTokenSeconds)
-                }
-        )
+        let snapshot = session.exportSnapshot()
         let safeName = session.title
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
@@ -675,24 +656,17 @@ struct ChatView: View {
         }
     }
 
-    /// Loads which server models support vision, so the view model can choose the
+    /// Loads which server models support vision, so the controller can choose the
     /// native-vision vs. preprocessor path when an image is attached.
     private func loadVisionCapabilities() async {
-        guard let client = OllamaClient(baseURLString: serverURL) else { return }
-        if let models = try? await client.models() {
-            viewModel.availableVisionModelNames = Set(models.filter(\.supportsVision).map(\.name))
-        }
+        await viewModel.loadVisionCapabilities(client: OllamaClient(baseURLString: serverURL))
     }
 
     /// Looks up the session model's trained context length (`/api/show`) so budgeting
     /// and `num_ctx` respect the model's real limit instead of the user's raw preset.
     private func loadModelContextLength() async {
-        guard session.backend == .ollama, !session.modelName.isEmpty,
-              viewModel.modelContextLengths[session.modelName] == nil,
-              let client = OllamaClient(baseURLString: serverURL) else { return }
-        if let length = try? await client.modelContextLength(session.modelName), length > 0 {
-            viewModel.modelContextLengths[session.modelName] = length
-        }
+        await viewModel.loadModelContextLength(for: session,
+                                               client: OllamaClient(baseURLString: serverURL))
     }
 
     private func importURLs(_ urls: [URL]) {
