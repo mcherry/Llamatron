@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngineStore
 
 /// `@AppStorage` keys for app-wide settings, kept in one place to avoid typos.
 enum SettingsKey {

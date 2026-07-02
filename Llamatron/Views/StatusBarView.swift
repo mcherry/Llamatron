@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngineStore
 import LlamaEngine
 
 /// Thin stats strip along the bottom of the chat. Shows turn count, how full the

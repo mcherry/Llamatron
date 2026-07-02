@@ -32,6 +32,8 @@ targets:
     dependencies:
       - package: LlamaEngine
         product: LlamaEngine
+      - package: LlamaEngine
+        product: LlamaEngineStore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.llamatron.Llamatron

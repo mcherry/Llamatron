@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngineStore
 import LlamaEngine
 
 /// Per-turn inspector: latency/token metrics, the retrieved context chunks with

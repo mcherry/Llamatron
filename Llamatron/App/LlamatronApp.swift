@@ -1,6 +1,7 @@
 import SwiftUI
+import LlamaEngineStore
 import SwiftData
-import LlamaEngine   // Package wired in (Phase 0); real usage begins in Phase 1.
+import LlamaEngine
 
 @main
 struct LlamatronApp: App {
@@ -12,9 +13,8 @@ struct LlamatronApp: App {
         UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 250])
 
         do {
-            container = try ModelContainer(for: ChatSession.self, ChatMessage.self,
-                                           Attachment.self, DocumentChunk.self,
-                                           PromptPreset.self)
+            // The persistence schema is owned by the engine's Store product.
+            container = try ModelContainer(for: Schema(LlamaEngineStore.models))
         } catch {
             fatalError("Failed to create the SwiftData container: \(error)")
         }

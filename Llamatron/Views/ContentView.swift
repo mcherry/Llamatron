@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngineStore
 import LlamaEngine
 import SwiftData
 

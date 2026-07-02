@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngineStore
 import LlamaEngine
 import SwiftData
 import UniformTypeIdentifiers
@@ -28,7 +29,7 @@ struct ChatView: View {
     @AppStorage(SettingsKey.conversationMode) private var conversationModeEnabled = false
     @AppStorage(SettingsKey.dictationVoiceProcessing) private var voiceProcessing = SettingsDefault.dictationVoiceProcessing
 
-    @State private var viewModel = ChatViewModel()
+    @State private var viewModel = ConversationController()
     @State private var speech = SpeechController()
     @State private var dictation = DictationController()
     /// The draft text captured when dictation started, so the transcript appends to it.

@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngineStore
 import LlamaEngine
 
 /// Per-session configuration: which model to use, the context window, and the
