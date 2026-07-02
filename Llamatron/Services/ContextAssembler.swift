@@ -49,7 +49,8 @@ struct ContextAssembler: Sendable {
     func assemble(chunks: [RetrievableChunk],
                   query: String,
                   available: Int,
-                  plan: [ContextStrategy]) async -> AssembledContext? {
+                  plan: [ContextStrategy],
+                  retrievalQuery: String? = nil) async -> AssembledContext? {
         guard !chunks.isEmpty, !plan.isEmpty, available > 0 else { return nil }
 
         var attempted: [ContextStrategy] = []
@@ -62,7 +63,7 @@ struct ContextAssembler: Sendable {
                 case .truncate:
                     return truncate(chunks, available: available, attempted: attempted)
                 case .retrieval:
-                    return try await retrieve(chunks, query: query, available: available, attempted: attempted)
+                    return try await retrieve(chunks, query: retrievalQuery ?? query, available: available, attempted: attempted)
                 case .summarize:
                     return try await summarize(chunks, query: query, available: available, attempted: attempted)
                 }
@@ -131,21 +132,24 @@ struct ContextAssembler: Sendable {
             return (chunk, Vector.cosineSimilarity(queryVector, embedding))
         }.sorted { $0.score > $1.score }
 
-        // Greedily take the highest-scoring chunks that fit the budget.
-        var selected: [RetrievableChunk] = []
-        var used = 0
-        for candidate in scored {
-            let tokens = TokenEstimator.estimate(candidate.chunk.text)
-            if !selected.isEmpty, used + tokens > available { break }
-            selected.append(candidate.chunk)
-            used += tokens
-            if used >= available { break }
+        // Select with Maximal Marginal Relevance so the chosen excerpts are both
+        // relevant *and* diverse: MMR penalizes a candidate that duplicates what's
+        // already picked, so near-identical chunks (e.g. overlapping neighbors) don't
+        // crowd out other useful passages and waste the budget.
+        let candidates = scored.map {
+            MMRCandidate(id: $0.chunk.id,
+                         relevance: $0.score,
+                         embedding: $0.chunk.embedding ?? [],
+                         tokens: TokenEstimator.estimate($0.chunk.text))
         }
+        let selectedIDs = Self.mmrSelect(candidates, available: available)
+        let byID = Dictionary(working.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let selected = selectedIDs.compactMap { byID[$0] }
         guard !selected.isEmpty else { throw OllamaError.server("No relevant content found.") }
 
-        let selectedIDs = Set(selected.map(\.id))
+        let selectedSet = Set(selectedIDs)
         let retrieved = scored
-            .filter { selectedIDs.contains($0.chunk.id) }
+            .filter { selectedSet.contains($0.chunk.id) }
             .map { RetrievedChunkInfo(id: $0.chunk.id,
                                      sourceName: $0.chunk.sourceName,
                                      ordinal: $0.chunk.ordinal,
@@ -168,11 +172,11 @@ struct ContextAssembler: Sendable {
                            query: String,
                            available: Int,
                            attempted: [ContextStrategy]) async throws -> AssembledContext {
-        // Map: summarize each chunk with the task in view.
-        var summaries: [String] = []
-        for chunk in chunks.sorted(by: { $0.ordinal < $1.ordinal }) {
-            summaries.append(try await summarizeOne(chunk.text, query: query))
-        }
+        // Map: summarize each chunk with the task in view. Run a bounded number of
+        // summaries concurrently so a many-chunk document doesn't take N sequential
+        // round-trips, while capping load on the server.
+        let ordered = chunks.sorted { $0.ordinal < $1.ordinal }
+        let summaries = try await mapSummaries(ordered, query: query)
 
         // Reduce: collapse the summaries until they fit (bounded iterations).
         var combined = summaries.joined(separator: "\n\n")
@@ -226,5 +230,87 @@ struct ContextAssembler: Sendable {
 
     private func labels(for chunks: [RetrievableChunk]) -> [String] {
         Array(Set(chunks.map(\.sourceName))).sorted()
+    }
+
+    /// Summarizes chunks with bounded concurrency, preserving input order. Keeps at
+    /// most `maxConcurrent` summary calls in flight so a large document is summarized
+    /// quickly without overwhelming the server.
+    private func mapSummaries(_ chunks: [RetrievableChunk], query: String) async throws -> [String] {
+        let maxConcurrent = 4
+        return try await withThrowingTaskGroup(of: (Int, String).self) { group in
+            var results = [String](repeating: "", count: chunks.count)
+            var next = 0
+            for _ in 0..<min(maxConcurrent, chunks.count) {
+                let i = next; next += 1
+                group.addTask { (i, try await summarizeOne(chunks[i].text, query: query)) }
+            }
+            while let (index, summary) = try await group.next() {
+                results[index] = summary
+                if next < chunks.count {
+                    let i = next; next += 1
+                    group.addTask { (i, try await summarizeOne(chunks[i].text, query: query)) }
+                }
+            }
+            return results
+        }
+    }
+}
+
+// MARK: - Maximal Marginal Relevance
+
+/// A retrieval candidate for MMR selection: its relevance to the query, its embedding
+/// (to measure redundancy against already-picked items), and its token cost.
+struct MMRCandidate: Sendable {
+    let id: UUID
+    let relevance: Float
+    let embedding: [Float]
+    let tokens: Int
+}
+
+extension ContextAssembler {
+    /// Builds the text used to *retrieve* document chunks: the current question plus a
+    /// short tail of recent turns. This lets context-dependent follow-ups ("what about
+    /// the second one?") retrieve using the surrounding conversation instead of an
+    /// under-specified query. Only affects retrieval scoring, not the prompt. Pure.
+    static func enrichedRetrievalQuery(current: String,
+                                       recentTurns: [String],
+                                       keepTurns: Int = 2,
+                                       maxRecentChars: Int = 500) -> String {
+        let tail = recentTurns.suffix(keepTurns)
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tail.isEmpty else { return current }
+        return String(tail.suffix(maxRecentChars)) + "\n" + current
+    }
+
+    /// Orders candidates by Maximal Marginal Relevance and returns the IDs that fit the
+    /// token budget. Each step picks the candidate maximizing
+    /// `λ·relevance − (1−λ)·maxSimilarityToPicked`, so highly relevant but redundant
+    /// chunks are deferred in favor of ones that add new information. Pure/testable.
+    static func mmrSelect(_ candidates: [MMRCandidate], available: Int, lambda: Double = 0.7) -> [UUID] {
+        guard available > 0 else { return [] }
+        var remaining = candidates
+        var selected: [MMRCandidate] = []
+        var used = 0
+        while !remaining.isEmpty {
+            var bestIndex = 0
+            var bestScore = -Double.greatestFiniteMagnitude
+            for (index, candidate) in remaining.enumerated() {
+                let redundancy = selected
+                    .map { Double(Vector.cosineSimilarity(candidate.embedding, $0.embedding)) }
+                    .max() ?? 0
+                let score = lambda * Double(candidate.relevance) - (1 - lambda) * redundancy
+                if score > bestScore {
+                    bestScore = score
+                    bestIndex = index
+                }
+            }
+            let chosen = remaining.remove(at: bestIndex)
+            if !selected.isEmpty, used + chosen.tokens > available { break }
+            selected.append(chosen)
+            used += chosen.tokens
+            if used >= available { break }
+        }
+        return selected.map(\.id)
     }
 }

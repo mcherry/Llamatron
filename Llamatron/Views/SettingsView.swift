@@ -8,6 +8,8 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.requestTimeout) private var requestTimeout = SettingsDefault.timeout
     @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
     @AppStorage(SettingsKey.diagramGuidance) private var diagramGuidance = false
+    @AppStorage(SettingsKey.rightSizeContext) private var rightSizeContext = SettingsDefault.rightSizeContext
+    @AppStorage(SettingsKey.keepAliveMinutes) private var keepAliveMinutes = SettingsDefault.keepAliveMinutes
 
     @AppStorage(SettingsKey.searchProvider) private var searchProvider = WebSearch.ProviderKind.none.rawValue
     @AppStorage(SettingsKey.searxngURL) private var searxngURL = ""
@@ -82,6 +84,20 @@ struct SettingsView: View {
                         Text(ContextSize.label(size)).tag(size)
                     }
                 }
+                Toggle("Right-size context to each request", isOn: $rightSizeContext)
+                Text("Sends only as much context window as a request needs (up to the size above), capped to the model's real limit. Uses less memory and loads faster on modest hardware; turn off to always send the full size.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Picker("Keep model loaded", selection: $keepAliveMinutes) {
+                    Text("Server default (5 min)").tag(5)
+                    Text("15 minutes").tag(15)
+                    Text("30 minutes").tag(30)
+                    Text("1 hour").tag(60)
+                    Text("Always loaded").tag(-1)
+                }
+                Text("How long Ollama keeps the model in memory after a reply. Longer keeps it warm for faster follow-ups but holds VRAM.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section("Network") {
                 Picker("Request timeout", selection: $requestTimeout) {

@@ -83,6 +83,31 @@ final class OllamaClientTests: XCTestCase {
         XCTAssertTrue(finished)
     }
 
+    // MARK: - /api/show context length
+
+    func testParseContextLengthFromModelInfo() throws {
+        let json = #"""
+        {"model_info":{"general.architecture":"qwen3","qwen3.context_length":40960,"qwen3.embedding_length":5120}}
+        """#
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        XCTAssertEqual(OllamaClient.parseContextLength(data), 40960)
+    }
+
+    func testParseContextLengthMissingIsNil() throws {
+        let data = try XCTUnwrap(#"{"model_info":{"general.architecture":"llama"}}"#.data(using: .utf8))
+        XCTAssertNil(OllamaClient.parseContextLength(data))
+    }
+
+    func testParseContextLengthNoModelInfoIsNil() throws {
+        let data = try XCTUnwrap(#"{"license":"MIT"}"#.data(using: .utf8))
+        XCTAssertNil(OllamaClient.parseContextLength(data))
+    }
+
+    func testParseContextLengthGarbageIsNil() throws {
+        let data = try XCTUnwrap("not json".data(using: .utf8))
+        XCTAssertNil(OllamaClient.parseContextLength(data))
+    }
+
     // MARK: - Title cleanup
 
     func testTitleStripsQuotesAndTrailingPunctuation() {

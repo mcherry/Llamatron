@@ -14,6 +14,8 @@ struct ChatView: View {
     @AppStorage(SettingsKey.requestTimeout) private var requestTimeout = SettingsDefault.timeout
     @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
     @AppStorage(SettingsKey.diagramGuidance) private var diagramGuidance = false
+    @AppStorage(SettingsKey.rightSizeContext) private var rightSizeContext = SettingsDefault.rightSizeContext
+    @AppStorage(SettingsKey.keepAliveMinutes) private var keepAliveMinutes = SettingsDefault.keepAliveMinutes
     @AppStorage(SettingsKey.imageServerURL) private var imageServerURL = SettingsDefault.imageServerURL
     @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
     @AppStorage(SettingsKey.ttsAppleVoice) private var ttsAppleVoice = ""
@@ -103,6 +105,7 @@ struct ChatView: View {
             return true
         }
         .task(id: serverURL) { await loadVisionCapabilities() }
+        .task(id: session.modelName) { await loadModelContextLength() }
         .onDisappear {
             speech.stop()
             dictation.stop()
@@ -467,6 +470,8 @@ struct ChatView: View {
                        client: client,
                        embeddingModel: embeddingModel,
                        diagramGuidance: diagramGuidance,
+                       rightSizeContext: rightSizeContext,
+                       keepAliveMinutes: keepAliveMinutes,
                        imageServerURL: imageServerURL,
                        imageBackendKind: imageBackendKind,
                        modelContext: modelContext)
@@ -655,6 +660,7 @@ struct ChatView: View {
         session.summarizedUntil = nil
         draft = ""
         viewModel.contextInfo = nil
+        viewModel.resetContextSizing(for: session)
         viewModel.dismissError()
     }
 
@@ -673,6 +679,17 @@ struct ChatView: View {
         guard let client = OllamaClient(baseURLString: serverURL) else { return }
         if let models = try? await client.models() {
             viewModel.availableVisionModelNames = Set(models.filter(\.supportsVision).map(\.name))
+        }
+    }
+
+    /// Looks up the session model's trained context length (`/api/show`) so budgeting
+    /// and `num_ctx` respect the model's real limit instead of the user's raw preset.
+    private func loadModelContextLength() async {
+        guard session.backend == .ollama, !session.modelName.isEmpty,
+              viewModel.modelContextLengths[session.modelName] == nil,
+              let client = OllamaClient(baseURLString: serverURL) else { return }
+        if let length = try? await client.modelContextLength(session.modelName), length > 0 {
+            viewModel.modelContextLengths[session.modelName] = length
         }
     }
 

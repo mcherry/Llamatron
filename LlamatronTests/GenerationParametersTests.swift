@@ -115,6 +115,34 @@ final class GenerationParametersTests: XCTestCase {
         XCTAssertEqual(json["think"] as? Bool, false)
     }
 
+    // MARK: - keep_alive / num_predict
+
+    func testKeepAliveOmittedWhenNil() throws {
+        let request = ChatRequest(model: "qwen", messages: [], contextSize: 4096)
+        let data = try OllamaClient.encodeChatBody(request)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(json["keep_alive"])
+    }
+
+    func testKeepAliveEncodedWhenSet() throws {
+        let request = ChatRequest(model: "qwen", messages: [], contextSize: 4096, keepAlive: "30m")
+        let data = try OllamaClient.encodeChatBody(request)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["keep_alive"] as? String, "30m")
+    }
+
+    func testNumPredictEncodedInOptions() throws {
+        let request = ChatRequest(model: "qwen", messages: [], contextSize: 4096, numPredict: 256)
+        let options = try encodedOptions(request)
+        XCTAssertEqual(options["num_predict"] as? Int, 256)
+    }
+
+    func testNumPredictOmittedWhenNil() throws {
+        let request = ChatRequest(model: "qwen", messages: [], contextSize: 4096)
+        let options = try encodedOptions(request)
+        XCTAssertNil(options["num_predict"])
+    }
+
     // MARK: - ReasoningMode
 
     func testReasoningModeThinkMapping() {

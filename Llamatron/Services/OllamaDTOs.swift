@@ -194,6 +194,9 @@ struct ChatRequest: Sendable {
     /// When set, toggles Ollama's reasoning. `false` asks thinking models to answer
     /// directly (used for title generation). Omitted from the request when `nil`.
     var think: Bool?
+    /// How long Ollama keeps the model loaded after this request (e.g. "30m", "-1" to
+    /// keep it resident). Omitted from the request when `nil`, using the server default.
+    var keepAlive: String?
     /// Sampling parameters (temperature, seed, …). Empty by default.
     var parameters: GenerationParameters
 
@@ -203,6 +206,7 @@ struct ChatRequest: Sendable {
          stream: Bool = true,
          numPredict: Int? = nil,
          think: Bool? = nil,
+         keepAlive: String? = nil,
          parameters: GenerationParameters = GenerationParameters()) {
         self.model = model
         self.messages = messages
@@ -210,6 +214,7 @@ struct ChatRequest: Sendable {
         self.stream = stream
         self.numPredict = numPredict
         self.think = think
+        self.keepAlive = keepAlive
         self.parameters = parameters
     }
 }

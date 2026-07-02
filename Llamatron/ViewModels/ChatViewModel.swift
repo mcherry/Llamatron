@@ -16,6 +16,15 @@ final class ChatViewModel {
 
     private var streamTask: Task<Void, Never>?
 
+    /// Learns per-model token-estimate correction factors from real `prompt_eval_count`
+    /// values, so budgeting reflects how each model actually tokenizes.
+    private let tokenCalibrator = TokenCalibrator()
+
+    /// The highest `num_ctx` used so far per session. Right-sizing never drops below
+    /// this within a session, so the request window doesn't shrink between turns and
+    /// needlessly invalidate the server's prompt (KV) cache.
+    private var contextFloors: [UUID: Int] = [:]
+
     /// Inserts the user turn, opens an empty assistant turn, assembles any attached
     /// document context, then streams deltas into the assistant turn. Assembly and
     /// streaming both run in the same cancellable task.
@@ -24,6 +33,8 @@ final class ChatViewModel {
               client: OllamaClient?,
               embeddingModel: String,
               diagramGuidance: Bool = false,
+              rightSizeContext: Bool = true,
+              keepAliveMinutes: Int = 5,
               imageServerURL: String = "",
               imageBackendKind: String = ImageBackendKind.easyDiffusion.rawValue,
               modelContext: ModelContext) {
@@ -112,10 +123,41 @@ final class ChatViewModel {
                                         imageDescription: vision.description,
                                         nativeImages: vision.nativeImages,
                                         diagramGuidance: diagramGuidance)
+
+            // Size the request window: cap the user's choice to the model's real limit,
+            // then — when right-sizing is on — shrink to the smallest preset that still
+            // holds this prompt plus a reply, so small chats don't allocate a huge KV
+            // cache. The reply reserve keeps room so the answer isn't cut off. The
+            // prompt estimate is scaled by the model's learned tokenization factor so a
+            // dense prompt isn't under-sized.
+            let ceiling = self.contextCeiling(for: session)
+            let scale = self.tokenCalibrator.scale(for: session.modelName)
+            let rawPromptTokens = TokenEstimator.estimate(turns.map(\.content))
+            let scaledPromptTokens = Int((Double(rawPromptTokens) * scale).rounded(.up))
+            let reserve = ContextBudget(contextSize: ceiling, systemTokens: 0,
+                                        historyTokens: 0, userTokens: 0).responseReserve
+            let effectiveCtx = rightSizeContext
+                ? ContextSize.rightSized(needed: scaledPromptTokens + reserve, ceiling: ceiling)
+                : ceiling
+            // Never shrink num_ctx within a session (monotonic, clamped to the ceiling)
+            // so the server's prompt cache isn't invalidated by a smaller window.
+            let stableCtx: Int
+            if rightSizeContext {
+                stableCtx = min(ceiling, max(effectiveCtx, self.contextFloors[session.id] ?? 0))
+                self.contextFloors[session.id] = stableCtx
+            } else {
+                stableCtx = effectiveCtx
+            }
+            // keep_alive: negative keeps the model resident indefinitely; positive is a
+            // minute window; zero omits the field (server default).
+            let keepAlive: String? = keepAliveMinutes < 0 ? "-1"
+                : (keepAliveMinutes > 0 ? "\(keepAliveMinutes)m" : nil)
             let request = ChatRequest(model: session.modelName,
                                       messages: turns,
-                                      contextSize: session.contextSize,
+                                      contextSize: stableCtx,
+                                      numPredict: session.maxResponseTokens,
                                       think: session.reasoningMode.think,
+                                      keepAlive: keepAlive,
                                       parameters: session.generationParameters)
             assistant.requestPayload = RequestInspector.payload(for: request,
                                                                 backend: session.backend,
@@ -124,6 +166,7 @@ final class ChatViewModel {
                                into: assistant,
                                session: session,
                                titleBackend: backend,
+                               rawPromptEstimate: rawPromptTokens,
                                modelContext: modelContext)
         }
     }
@@ -133,6 +176,11 @@ final class ChatViewModel {
         streamTask = nil
         isStreaming = false
         activityStatus = nil
+    }
+
+    /// Forgets a session's `num_ctx` floor so a cleared conversation right-sizes afresh.
+    func resetContextSizing(for session: ChatSession) {
+        contextFloors[session.id] = nil
     }
 
     func dismissError() {
@@ -237,6 +285,7 @@ final class ChatViewModel {
                          into assistant: ChatMessage,
                          session: ChatSession,
                          titleBackend: ChatStreaming,
+                         rawPromptEstimate: Int = 0,
                          modelContext: ModelContext) async {
         let started = Date()
         var sawFirstToken = false
@@ -264,6 +313,13 @@ final class ChatViewModel {
                     assistant.evalDurationNanos = chunk.evalDurationNanos
                     // "length" means the model hit the context window mid-reply.
                     assistant.wasTruncated = (chunk.doneReason == "length")
+                    // Calibrate the token estimator against the server's real count so
+                    // future budgets for this model reflect its true tokenization.
+                    if session.backend == .ollama, let actual = chunk.promptTokens {
+                        tokenCalibrator.record(model: session.modelName,
+                                               rawEstimate: rawPromptEstimate,
+                                               actualTokens: actual)
+                    }
                 }
             }
             assistant.generationSeconds = Date().timeIntervalSince(started)
@@ -306,6 +362,11 @@ final class ChatViewModel {
     /// already-prepared conversation `historyTurns` (which include the new user turn).
     /// When `nativeImages` is non-empty, they're attached to the latest user turn so a
     /// vision-capable primary model receives the image directly.
+    ///
+    /// Turn order is deliberately stable-prefix-first — system prompt, then guidance,
+    /// then the reference/context blocks, then history ending in the new user turn — so
+    /// the large, unchanging leading content stays byte-identical across turns and the
+    /// server can reuse its cached prompt (KV) prefix instead of re-evaluating it.
     private func buildTurns(for session: ChatSession,
                             contextBlock: String?,
                             historyTurns: [ChatTurn],
@@ -417,6 +478,21 @@ final class ChatViewModel {
     /// load). Lets the view model choose native vs. preprocessor paths.
     var availableVisionModelNames: Set<String> = []
 
+    /// Trained context length per Ollama model name (from `/api/show`, populated by the
+    /// UI). Lets budgeting and `num_ctx` respect the model's real limit.
+    var modelContextLengths: [String: Int] = [:]
+
+    /// The effective context window for this session: the user's chosen size, capped to
+    /// the model's real trained limit when known. Budget planning and the request both
+    /// respect this so the app never plans for room the model doesn't actually have.
+    func contextCeiling(for session: ChatSession) -> Int {
+        guard session.backend == .ollama,
+              let maxLen = modelContextLengths[session.modelName], maxLen > 0 else {
+            return session.contextSize
+        }
+        return min(session.contextSize, maxLen)
+    }
+
     // MARK: - Conversation history management
 
     private let recentTurnsToKeep = 6
@@ -436,11 +512,16 @@ final class ChatViewModel {
                                createdAt: $0.createdAt, embedding: $0.embedding) }
         guard !conv.isEmpty else { return [] }
 
-        let reserve = ContextBudget(contextSize: session.contextSize,
+        // Plan against a window shrunk by the model's learned tokenization factor, so a
+        // dense history is recognized as over-budget before the server truncates it.
+        let ceiling = contextCeiling(for: session)
+        let scale = tokenCalibrator.scale(for: session.modelName)
+        let planningWindow = max(1, Int(Double(ceiling) / scale))
+        let reserve = ContextBudget(contextSize: planningWindow,
                                     systemTokens: 0, historyTokens: 0, userTokens: 0).responseReserve
         let overhead = TokenEstimator.estimate(session.systemPrompt)
             + TokenEstimator.estimate(contextBlock ?? "")
-        let budget = max(0, session.contextSize - overhead - reserve)
+        let budget = max(0, planningWindow - overhead - reserve)
 
         // Everything fits: pristine full history, no network, no note.
         if ConversationHistory.fits(conv, budget: budget) {
@@ -452,7 +533,7 @@ final class ChatViewModel {
         let mode = (session.historyMode.needsServer && client == nil) ? .truncate : session.historyMode
         switch mode {
         case .full:
-            assistant.historyNote = "History (~\(ConversationHistory.tokenCount(conv)) tokens) exceeds the \(session.contextSize)-token window; the server will clamp it. Choose a History mode in Session Settings to manage it."
+            assistant.historyNote = "History (~\(ConversationHistory.tokenCount(conv)) tokens) exceeds the \(ceiling)-token window; the server will clamp it. Choose a History mode in Session Settings to manage it."
             return conv.map { ChatTurn(role: $0.role, content: $0.content) }
 
         case .truncate:
@@ -648,7 +729,13 @@ final class ChatViewModel {
         let historyTokens = session.orderedMessages
             .filter { $0.role != .system && !$0.content.isEmpty }
             .reduce(0) { $0 + TokenEstimator.estimate($1.content) }
-        let budget = ContextBudget(contextSize: session.contextSize,
+        // Plan against a window shrunk by the model's learned tokenization factor, so
+        // dense sources are recognized as too large (and retrieval/summarize kicks in)
+        // before they would overflow the real window.
+        let ceiling = contextCeiling(for: session)
+        let scale = tokenCalibrator.scale(for: session.modelName)
+        let planningWindow = max(1, Int(Double(ceiling) / scale))
+        let budget = ContextBudget(contextSize: planningWindow,
                                    systemTokens: TokenEstimator.estimate(session.systemPrompt),
                                    historyTokens: historyTokens,
                                    userTokens: TokenEstimator.estimate(query))
@@ -664,10 +751,19 @@ final class ChatViewModel {
         let assembler = ContextAssembler(client: client,
                                          chatModel: session.modelName,
                                          embeddingModel: embeddingModel)
+        // Retrieve using the question plus a short tail of recent turns so follow-ups
+        // resolve against the surrounding conversation.
+        let priorTurns = session.orderedMessages
+            .filter { $0.role != .system && !$0.content.isEmpty }
+            .dropLast()
+            .suffix(2)
+            .map(\.content)
+        let retrievalQuery = ContextAssembler.enrichedRetrievalQuery(current: query, recentTurns: Array(priorTurns))
         guard let result = await assembler.assemble(chunks: chunks,
                                                     query: query,
                                                     available: available,
-                                                    plan: plan) else { return nil }
+                                                    plan: plan,
+                                                    retrievalQuery: retrievalQuery) else { return nil }
 
         // Persist freshly computed embeddings back onto the @Model chunks.
         if !result.newEmbeddings.isEmpty {
@@ -686,7 +782,7 @@ final class ChatViewModel {
             && contentTokens > available
             && (result.strategyUsed == .retrieval || result.strategyUsed == .summarize)
         let warning: String? = autoSwitched
-            ? "Sources are large for this \(ContextSize.label(session.contextSize)) window — auto-switched to \(result.strategyUsed.label) so the reply isn't cut off. For a whole-document answer, increase the context size or attach a smaller source."
+            ? "Sources are large for this \(ContextSize.label(ceiling)) window — auto-switched to \(result.strategyUsed.label) so the reply isn't cut off. For a whole-document answer, increase the context size or attach a smaller source."
             : nil
 
         contextInfo = ContextInfo(strategy: result.strategyUsed,

@@ -59,6 +59,23 @@ struct OllamaClient: Sendable, LLMBackend {
         return try JSONDecoder().decode(TagsResponse.self, from: data).models
     }
 
+    /// The model's maximum trained context length from `POST /api/show`
+    /// (`model_info.<arch>.context_length`), or `nil` if the server doesn't report it.
+    /// Lets the app cap `num_ctx` to what the model actually supports instead of
+    /// allocating an oversized KV cache or degrading past the trained window.
+    func modelContextLength(_ name: String) async throws -> Int? {
+        var request = URLRequest(url: baseURL.appending(path: "api/show"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["model": name])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw OllamaError.http(http.statusCode)
+        }
+        return Self.parseContextLength(data)
+    }
+
     /// Models currently loaded in memory (`GET /api/ps`).
     func runningModels() async throws -> [RunningModel] {
         let data = try await get("api/ps")
@@ -195,6 +212,7 @@ struct OllamaClient: Sendable, LLMBackend {
             messages: request.messages,
             stream: request.stream,
             think: request.think,
+            keepAlive: request.keepAlive,
             options: .init(numCtx: request.contextSize,
                            numPredict: request.numPredict,
                            temperature: p.temperature,
@@ -224,6 +242,20 @@ struct OllamaClient: Sendable, LLMBackend {
             return .server(message)
         }
         return .http(status)
+    }
+
+    /// Extracts the model's trained context length from an `/api/show` payload by
+    /// finding the `model_info` entry whose key ends in `.context_length` (e.g.
+    /// `qwen3.context_length`). Pure and static so it can be unit-tested.
+    static func parseContextLength(_ data: Data) -> Int? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let info = root["model_info"] as? [String: Any] else { return nil }
+        for (key, value) in info where key.hasSuffix(".context_length") {
+            if let n = value as? Int, n > 0 { return n }
+            if let d = value as? Double, d > 0 { return Int(d) }
+            if let s = value as? String, let n = Int(s), n > 0 { return n }
+        }
+        return nil
     }
 
     /// Decodes one line of the streamed JSONL response into a `ChatChunk`.
@@ -260,6 +292,8 @@ private struct ChatRequestBody: Encodable {
     let stream: Bool
     /// Omitted when `nil` (synthesized `Encodable` skips nil optionals).
     let think: Bool?
+    /// How long to keep the model loaded (`keep_alive`). Omitted when `nil`.
+    let keepAlive: String?
     let options: Options
 
     struct Options: Encodable {

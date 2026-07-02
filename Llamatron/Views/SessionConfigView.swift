@@ -25,6 +25,8 @@ struct SessionConfigView: View {
     @State private var appleStatus = AppleIntelligence.status
     @State private var showingSavePreset = false
     @State private var newPresetName = ""
+    /// The session model's trained context length (`/api/show`), for the cap warning.
+    @State private var modelMaxContext: Int?
 
     // Local text mirrors of the optional numeric parameters, so typing ("0.") doesn't
     // get reformatted mid-edit. Committed to the session on change.
@@ -86,6 +88,7 @@ struct SessionConfigView: View {
         .task(id: session.backend) {
             if session.backend == .imageGeneration { await loadImageModels() }
         }
+        .task(id: session.modelName) { await loadModelContext() }
         .onAppear(perform: loadParameterFields)
     }
 
@@ -196,6 +199,18 @@ struct SessionConfigView: View {
                 Button("Set", action: applyCustomContext)
                     .disabled(Int(customContext.filter(\.isNumber)) == nil)
             }
+            if let modelMaxContext {
+                if session.contextSize > modelMaxContext {
+                    Label("Above this model's limit of \(ContextSize.label(modelMaxContext)); the server will cap it. Larger values won't add usable context.",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("This model supports up to \(ContextSize.label(modelMaxContext)).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Text("Larger context uses more memory. Values above a model's limit are clamped or rejected by the server.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -230,6 +245,11 @@ struct SessionConfigView: View {
                 session.repeatPenalty = parseDouble(repeatText)
             }
 
+            parameterField("Max response tokens", text: $maxTokensText,
+                           help: "Caps how many tokens the model may generate (Ollama num_predict), a safety net against runaway replies. For thinking models this counts reasoning + answer. Blank uses the server default (unlimited within the window).") {
+                session.maxResponseTokens = parseInt(maxTokensText)
+            }
+
             seedRow
 
             LabeledContent("Stop sequences") {
@@ -249,7 +269,7 @@ struct SessionConfigView: View {
             }
 
             Button("Reset to Defaults", action: clearGenerationParameters)
-                .disabled(session.generationParameters.isEmpty)
+                .disabled(session.generationParameters.isEmpty && session.maxResponseTokens == nil)
         }
     }
 
@@ -547,6 +567,15 @@ struct SessionConfigView: View {
         customContext = ""
     }
 
+    /// Looks up the session model's trained context length so the picker can warn when
+    /// the chosen size exceeds it.
+    private func loadModelContext() async {
+        modelMaxContext = nil
+        guard session.backend == .ollama, !session.modelName.isEmpty,
+              let client = OllamaClient(baseURLString: serverURL) else { return }
+        modelMaxContext = try? await client.modelContextLength(session.modelName)
+    }
+
     /// Mirrors the session's stored parameters into the local text fields.
     private func loadParameterFields() {
         tempText = session.temperature.map { $0.formatted() } ?? ""
@@ -565,6 +594,7 @@ struct SessionConfigView: View {
         session.repeatPenalty = nil
         session.seed = nil
         session.stopSequences = []
+        session.maxResponseTokens = nil
         loadParameterFields()
     }
 

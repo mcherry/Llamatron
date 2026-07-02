@@ -10,6 +10,10 @@ enum SettingsKey {
     static let composerHeight = "composerHeight"
     static let embeddingModel = "embeddingModel"
     static let diagramGuidance = "diagramGuidance"
+    /// Right-size `num_ctx` to each request instead of always sending the full window.
+    static let rightSizeContext = "rightSizeContext"
+    /// How long Ollama keeps the model loaded between turns, in minutes.
+    static let keepAliveMinutes = "keepAliveMinutes"
 
     // Web search providers (used by the web-source search sheet).
     static let searchProvider = "searchProvider"
@@ -51,6 +55,8 @@ enum SettingsDefault {
     static let timeout = 120
     static let composerHeight = 72.0
     static let embeddingModel = "nomic-embed-text"
+    static let rightSizeContext = true
+    static let keepAliveMinutes = 5
     static let imageServerURL = "http://localhost:9000"
     static let imageSteps = 20
     static let imageSize = 640
@@ -71,5 +77,18 @@ enum ContextSize {
         if n >= 1_048_576 && n % 1_048_576 == 0 { return "\(n / 1_048_576)M" }
         if n >= 1024 && n % 1024 == 0 { return "\(n / 1024)K" }
         return "\(n)"
+    }
+
+    /// The smallest preset window that holds `needed` tokens without exceeding
+    /// `ceiling` (the user's chosen size, itself capped to the model's real limit).
+    /// Snapping to presets keeps `num_ctx` stable across similar turns so Ollama's
+    /// prompt cache stays warm, while still sending only as much window as the request
+    /// actually needs — less KV-cache memory and faster loads on modest hardware.
+    static func rightSized(needed: Int, ceiling: Int) -> Int {
+        let cap = max(1, ceiling)
+        let n = max(1, needed)
+        if n >= cap { return cap }
+        if let preset = presets.first(where: { $0 >= n && $0 <= cap }) { return preset }
+        return cap
     }
 }

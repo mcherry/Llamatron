@@ -51,6 +51,28 @@ final class ContextStrategyTests: XCTestCase {
         XCTAssertEqual(plan.first, .retrieval)
     }
 
+    // MARK: - ContextSize.rightSized
+
+    func testRightSizedSnapsUpToPreset() {
+        // A small request in a 32K ceiling snaps down to the smallest preset that fits.
+        XCTAssertEqual(ContextSize.rightSized(needed: 300, ceiling: 32768), 4096)
+        XCTAssertEqual(ContextSize.rightSized(needed: 5000, ceiling: 32768), 8192)
+        XCTAssertEqual(ContextSize.rightSized(needed: 9000, ceiling: 32768), 16384)
+    }
+
+    func testRightSizedNeverExceedsCeiling() {
+        // Need beyond the ceiling just returns the ceiling (the hard cap).
+        XCTAssertEqual(ContextSize.rightSized(needed: 40000, ceiling: 32768), 32768)
+        // Smallest preset above need is over the ceiling -> clamp to ceiling.
+        XCTAssertEqual(ContextSize.rightSized(needed: 5000, ceiling: 6000), 6000)
+    }
+
+    func testRightSizedHandlesNonPresetCeiling() {
+        // A model-reported max (non-preset) is honored as the cap.
+        XCTAssertEqual(ContextSize.rightSized(needed: 100, ceiling: 40960), 4096)
+        XCTAssertEqual(ContextSize.rightSized(needed: 50000, ceiling: 40960), 40960)
+    }
+
     // MARK: - ContextPlanner: auto mode
 
     func testPlanAutoInlineWhenItFits() {
