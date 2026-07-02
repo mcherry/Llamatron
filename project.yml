@@ -16,6 +16,9 @@ settings:
     INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Llamatron uses speech recognition to turn your dictation into text. It runs on-device when your Mac supports it."
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+packages:
+  LlamaEngine:
+    path: ../LlamaEngine
 targets:
   Llamatron:
     type: application
@@ -26,6 +29,9 @@ targets:
           - "Resources/**"
       - path: Llamatron/Resources
         buildPhase: resources
+    dependencies:
+      - package: LlamaEngine
+        product: LlamaEngine
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.llamatron.Llamatron

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import LlamaEngine   // Package wired in (Phase 0); real usage begins in Phase 1.
 
 @main
 struct LlamatronApp: App {
