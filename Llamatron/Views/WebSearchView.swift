@@ -11,6 +11,12 @@ struct WebSearchView: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage(SettingsKey.searchProvider) private var searchProvider = WebSearch.ProviderKind.none.rawValue
+    @AppStorage(SettingsKey.searxngURL) private var searxngURL = ""
+    @AppStorage(SettingsKey.braveAPIKey) private var braveAPIKey = ""
+    @AppStorage(SettingsKey.tavilyAPIKey) private var tavilyAPIKey = ""
+    @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
+
     @State private var query = ""
     @State private var results: [WebSearch.Result] = []
     @State private var selected: Set<String> = []
@@ -19,7 +25,15 @@ struct WebSearchView: View {
     @State private var isAdding = false
     @State private var errorMessage: String?
 
-    private let providerConfigured = WebSearch.configuredProvider() != nil
+    /// The search settings the app owns, assembled for the engine.
+    private var searchConfig: WebSearchConfig {
+        WebSearchConfig(provider: WebSearch.ProviderKind(rawValue: searchProvider) ?? .none,
+                        searxngURL: searxngURL,
+                        braveAPIKey: braveAPIKey,
+                        tavilyAPIKey: tavilyAPIKey,
+                        marginaliaAPIKey: marginaliaAPIKey)
+    }
+    private var providerConfigured: Bool { WebSearch.isConfigured(searchConfig) }
 
     private enum SourceStatus: Equatable {
         case fetching, added, skipped(String)
@@ -165,7 +179,7 @@ struct WebSearchView: View {
         status = [:]
         Task {
             do {
-                results = try await WebSearch.search(trimmed)
+                results = try await WebSearch.search(trimmed, config: searchConfig)
                 if results.isEmpty { errorMessage = "No results." }
             } catch {
                 errorMessage = error.localizedDescription
