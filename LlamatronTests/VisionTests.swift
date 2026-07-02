@@ -1,4 +1,5 @@
 import XCTest
+import LlamaEngine
 @testable import Llamatron
 
 final class VisionTests: XCTestCase {

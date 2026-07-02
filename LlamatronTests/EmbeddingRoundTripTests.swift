@@ -1,4 +1,5 @@
 import XCTest
+import LlamaEngine
 @testable import Llamatron
 
 /// Tests for Llamatron-side types that back retrieval but haven't moved into

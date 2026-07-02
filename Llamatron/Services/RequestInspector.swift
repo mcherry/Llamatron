@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 
 /// Builds a readable, pretty-printed JSON description of the exact request a turn
 /// produced, for the request inspector. For Ollama it reflects the literal wire body;

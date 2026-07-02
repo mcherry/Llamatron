@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 
 /// Minimal, dependency-free reachability check for the Ollama server, used by the
 /// first-run setup and Settings. The full networking layer (`OllamaClient`) arrives

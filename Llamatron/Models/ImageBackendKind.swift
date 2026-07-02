@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 
 /// Which local image-generation server to talk to. **Developer-extensible only** — add a case (and
 /// a matching `ImageProvider`) to support a new backend; this is not user-configurable. Stored as a

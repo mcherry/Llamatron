@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 import SwiftData
 
 /// Root split view: sessions on the left, the selected conversation on the right.

@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 
 /// Lists models on the Ollama server with their size and "loaded" state, lets the
 /// user pull a new model (with progress) and delete existing ones. Read/write actions
