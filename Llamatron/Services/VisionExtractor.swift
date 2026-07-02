@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 
 /// One image to describe: a plain `Sendable` value (base64 + a name), so it can cross
 /// actor boundaries without touching a SwiftData `@Model`.

@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 
 /// Per-session configuration: which model to use, the context window, and the
 /// system prompt. Models are loaded live from the server (embedding-only models

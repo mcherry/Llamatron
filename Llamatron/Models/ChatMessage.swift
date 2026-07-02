@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 import SwiftData
 
 /// A single turn in a conversation: a user prompt, an assistant reply, or the

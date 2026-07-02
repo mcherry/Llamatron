@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 
 /// A chunk handed to the assembler. A plain `Sendable` value (never a SwiftData
 /// `@Model`), so it can cross actor boundaries safely. `id` lets the caller write a

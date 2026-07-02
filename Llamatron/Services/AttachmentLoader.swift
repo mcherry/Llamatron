@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 import SwiftData
 import UniformTypeIdentifiers
 

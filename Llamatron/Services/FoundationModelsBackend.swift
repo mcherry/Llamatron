@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 #if canImport(FoundationModels)
 import FoundationModels
 #endif

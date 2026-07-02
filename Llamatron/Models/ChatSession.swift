@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 import SwiftData
 
 /// A saved conversation plus its per-session configuration: which model to use,

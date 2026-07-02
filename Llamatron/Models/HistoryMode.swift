@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 
 /// How a session's *conversation history* is fitted into the context window when it
 /// grows past the budget. (Distinct from `ContextMode`, which governs attached files.)

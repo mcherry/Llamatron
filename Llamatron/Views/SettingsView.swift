@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 
 /// App-wide settings (Cmd-,). Server address plus defaults applied to new sessions.
 struct SettingsView: View {

@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 
 /// Serializes a chat session to Markdown or JSON for sharing or offline analysis.
 /// Pure string builders (no SwiftData types cross in), so they are unit-testable by

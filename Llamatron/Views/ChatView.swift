@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 import SwiftData
 import UniformTypeIdentifiers
 import UniformTypeIdentifiers

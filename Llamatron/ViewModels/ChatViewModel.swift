@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 import SwiftData
 
 /// Owns the send/stream/persist flow for one chat session. `@MainActor` so it only

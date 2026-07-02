@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 import SwiftData
 
 /// A file the user attached to a session for context. Holds the extracted plain text

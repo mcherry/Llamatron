@@ -1,4 +1,5 @@
 import SwiftUI
+import LlamaEngine
 
 /// Thin stats strip along the bottom of the chat. Shows turn count, how full the
 /// context is (last prompt size vs the session limit), running token totals, and

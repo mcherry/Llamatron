@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 
 /// Generates a short session title from the first exchange using the session's own
 /// model. Best-effort and cancellable: it never blocks the chat, and a failure just
