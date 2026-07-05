@@ -1,4 +1,5 @@
 import Foundation
+import LlamaEngine
 import LlamaEngineStore
 
 /// `@AppStorage` keys for app-wide settings, kept in one place to avoid typos.
@@ -32,6 +33,8 @@ enum SettingsKey {
     static let imageSize = "imageSize"
     static let imageCFG = "imageCFG"
     static let imageNegativePrompt = "imageNegativePrompt"
+    /// The ComfyUI workflow-template library, stored as JSON (see `ComfyTemplateLibrary`).
+    static let comfyTemplates = "comfyTemplates"
 
     // Text-to-speech (app-level engine config; per-chat enable/engine live on ChatSession).
     static let ttsEngine = "ttsEngine"
@@ -66,4 +69,30 @@ enum SettingsDefault {
     static let ttsSpeed = 1.0
     static let dictationPauseSeconds = 1.5
     static let dictationVoiceProcessing = true
+}
+
+/// The app-side library of ComfyUI workflow templates, persisted as a JSON string in
+/// `@AppStorage(SettingsKey.comfyTemplates)`. A small shared codec so Settings (manage) and
+/// Session config (pick) agree on the storage format. Templates are `Codable` in the engine.
+enum ComfyTemplateLibrary {
+    /// Decodes the stored library JSON, tolerating an empty or damaged value (→ `[]`).
+    static func decode(_ json: String) -> [ComfyWorkflowTemplate] {
+        guard let data = json.data(using: .utf8),
+              let templates = try? JSONDecoder().decode([ComfyWorkflowTemplate].self, from: data)
+        else { return [] }
+        return templates
+    }
+
+    /// Encodes a library to a JSON string suitable for `@AppStorage`.
+    static func encode(_ templates: [ComfyWorkflowTemplate]) -> String {
+        guard let data = try? JSONEncoder().encode(templates),
+              let json = String(data: data, encoding: .utf8) else { return "[]" }
+        return json
+    }
+
+    /// The template whose id (its `UUID` string) matches `id`, from a stored library JSON.
+    static func template(id: String, in json: String) -> ComfyWorkflowTemplate? {
+        guard !id.isEmpty else { return nil }
+        return decode(json).first { $0.id.uuidString == id }
+    }
 }

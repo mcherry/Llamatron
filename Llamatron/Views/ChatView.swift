@@ -20,6 +20,7 @@ struct ChatView: View {
     @AppStorage(SettingsKey.keepAliveMinutes) private var keepAliveMinutes = SettingsDefault.keepAliveMinutes
     @AppStorage(SettingsKey.imageServerURL) private var imageServerURL = SettingsDefault.imageServerURL
     @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
+    @AppStorage(SettingsKey.comfyTemplates) private var comfyTemplatesJSON = "[]"
     @AppStorage(SettingsKey.ttsAppleVoice) private var ttsAppleVoice = ""
     @AppStorage(SettingsKey.ttsServerURL) private var ttsServerURL = SettingsDefault.ttsServerURL
     @AppStorage(SettingsKey.ttsVoice) private var ttsVoice = ""
@@ -476,6 +477,7 @@ struct ChatView: View {
                        keepAliveMinutes: keepAliveMinutes,
                        imageServerURL: imageServerURL,
                        imageBackendKind: imageBackendKind,
+                       imageWorkflowTemplate: selectedComfyTemplate,
                        modelContext: modelContext)
     }
 
@@ -588,11 +590,18 @@ struct ChatView: View {
         session.backend == .imageGeneration && message.imageGenInfo != nil && !viewModel.isStreaming
     }
 
+    /// The ComfyUI workflow template this session selected (only when the image backend is ComfyUI).
+    private var selectedComfyTemplate: ComfyWorkflowTemplate? {
+        guard ImageBackendKind(rawValue: imageBackendKind) == .comfyUI else { return nil }
+        return ComfyTemplateLibrary.template(id: session.comfyTemplateID, in: comfyTemplatesJSON)
+    }
+
     private func regenerate(_ message: ChatMessage) {
         viewModel.regenerateImage(from: message,
                                   session: session,
                                   serverURL: imageServerURL,
                                   backendKindRaw: imageBackendKind,
+                                  imageWorkflowTemplate: selectedComfyTemplate,
                                   modelContext: modelContext)
     }
 

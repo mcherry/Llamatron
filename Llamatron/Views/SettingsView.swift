@@ -1,5 +1,7 @@
 import SwiftUI
 import LlamaEngine
+import AppKit
+import UniformTypeIdentifiers
 
 /// App-wide settings (Cmd-,). Server address plus defaults applied to new sessions.
 struct SettingsView: View {
@@ -35,6 +37,9 @@ struct SettingsView: View {
     @State private var imageTesting = false
     @State private var imageTestStatus: String?
     @State private var imageTestOK = false
+
+    @AppStorage(SettingsKey.comfyTemplates) private var comfyTemplatesJSON = "[]"
+    @State private var comfyImportStatus: String?
 
     @AppStorage(SettingsKey.ttsEngine) private var ttsEngine = TTSEngine.apple.rawValue
     @AppStorage(SettingsKey.ttsAppleVoice) private var ttsAppleVoice = ""
@@ -193,6 +198,9 @@ struct SettingsView: View {
                     }
                     TextField("Negative prompt (optional)", text: $imageNegativePrompt, axis: .vertical)
                         .lineLimit(1...3)
+                    if imageBackendKind == ImageBackendKind.comfyUI.rawValue {
+                        comfyTemplatesView
+                    }
                 }
             }
             Section("Text-to-Speech") {
@@ -303,6 +311,70 @@ struct SettingsView: View {
             imageTestStatus = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach the server."
         }
         imageTesting = false
+    }
+
+    /// ComfyUI workflow-template management: import an API-format workflow (auto-bound to txt2img
+    /// parameters) and manage the library. Shown only when the ComfyUI backend is selected.
+    private var comfyTemplatesView: some View {
+        let templates = ComfyTemplateLibrary.decode(comfyTemplatesJSON)
+        return Group {
+            Divider()
+            Text("Workflow Templates").font(.subheadline.weight(.semibold))
+            Text("Import a workflow exported from ComfyUI in API format (Dev mode → Save API). Llamatron detects the txt2img parameters so a chat can drive it like any image backend.")
+                .font(.caption).foregroundStyle(.secondary)
+            ForEach(templates) { template in
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(template.name)
+                        Text("\(template.kind.label) · \(template.parameters.count) parameters detected")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(role: .destructive) { deleteComfyTemplate(template) } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Remove this template")
+                }
+            }
+            HStack(spacing: 8) {
+                Button("Import Workflow…") { importComfyTemplate() }
+                if let comfyImportStatus {
+                    Text(comfyImportStatus).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
+        }
+    }
+
+    /// Opens an API-format workflow file, auto-binds it to a template, and adds it to the library.
+    private func importComfyTemplate() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a ComfyUI workflow saved in API format."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            let name = url.deletingPathExtension().lastPathComponent
+            let template = ComfyWorkflowTemplate.autobound(name: name, workflowJSON: data)
+            guard !template.parameters.isEmpty else {
+                comfyImportStatus = "No parameters found in “\(name)”. Make sure it's saved in API format, not the default workflow format."
+                return
+            }
+            var templates = ComfyTemplateLibrary.decode(comfyTemplatesJSON)
+            templates.append(template)
+            comfyTemplatesJSON = ComfyTemplateLibrary.encode(templates)
+            comfyImportStatus = "Imported “\(name)” — \(template.parameters.count) parameters detected."
+        } catch {
+            comfyImportStatus = "Couldn't read that file."
+        }
+    }
+
+    /// Removes a template from the library.
+    private func deleteComfyTemplate(_ template: ComfyWorkflowTemplate) {
+        var templates = ComfyTemplateLibrary.decode(comfyTemplatesJSON)
+        templates.removeAll { $0.id == template.id }
+        comfyTemplatesJSON = ComfyTemplateLibrary.encode(templates)
     }
 
     private func testTTSServer() async {

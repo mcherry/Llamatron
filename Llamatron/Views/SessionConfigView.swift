@@ -43,10 +43,12 @@ struct SessionConfigView: View {
     @AppStorage(SettingsKey.imageGenEnabled) private var imageGenEnabled = false
     @AppStorage(SettingsKey.imageServerURL) private var imageServerURL = SettingsDefault.imageServerURL
     @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
+    @AppStorage(SettingsKey.comfyTemplates) private var comfyTemplatesJSON = "[]"
     @State private var imageModels: [ImageModel] = []
     @State private var imageVAEs: [ImageModel] = []
     @State private var imageTesting = false
     @State private var imageLoadError: String?
+    @State private var comfyIssues: [ComfyValidationIssue] = []
 
     /// Shared width for the generation parameter entry fields.
     private let fieldWidth: CGFloat = 160
@@ -89,7 +91,14 @@ struct SessionConfigView: View {
         .frame(width: 470, height: 620)
         .task { await loadModels() }
         .task(id: session.backend) {
-            if session.backend == .imageGeneration { await loadImageModels() }
+            if session.backend == .imageGeneration {
+                await loadImageModels()
+                await validateComfyTemplate()
+            }
+        }
+        .onChange(of: session.comfyTemplateID) {
+            applyComfyTemplateDefaults()
+            Task { await validateComfyTemplate() }
         }
         .task(id: session.modelName) { await loadModelContext() }
         .onAppear(perform: loadParameterFields)
@@ -368,6 +377,9 @@ struct SessionConfigView: View {
                 Label("Turn on image generation in Settings, then pick a model here.", systemImage: "info.circle")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
+                if isComfyUI {
+                    comfyTemplatePicker
+                }
                 HStack {
                     Picker("Image model", selection: $session.imageModel) {
                         Text("Select a model…").tag("")
@@ -399,33 +411,35 @@ struct SessionConfigView: View {
                 Stepper(value: $session.imageCFG, in: 1...20, step: 0.5) {
                     Text("Guidance (CFG): \(session.imageCFG, specifier: "%.1f")")
                 }
-                Picker("Sampler", selection: $session.imageSampler) {
-                    ForEach(ImageSampler.allCases) { Text($0.label).tag($0.rawValue) }
-                }
-                Picker("VAE", selection: $session.imageVAE) {
-                    Text("Model default").tag("")
-                    ForEach(imageVAEs) { Text($0.name).tag($0.id) }
-                    if !session.imageVAE.isEmpty, !imageVAEs.contains(where: { $0.id == session.imageVAE }) {
-                        Text(session.imageVAE).tag(session.imageVAE)
+                if !isComfyUI {
+                    Picker("Sampler", selection: $session.imageSampler) {
+                        ForEach(ImageSampler.allCases) { Text($0.label).tag($0.rawValue) }
                     }
-                }
-                Picker("Upscale", selection: $session.imageUpscaler) {
-                    ForEach(ImageUpscaler.allCases) { Text($0.label).tag($0.rawValue) }
-                }
-                if session.imageUpscaler == ImageUpscaler.latent.rawValue {
-                    Stepper("Upscaler steps: \(session.imageLatentUpscalerSteps)",
-                            value: $session.imageLatentUpscalerSteps, in: 1...50)
-                } else if !session.imageUpscaler.isEmpty {
-                    Picker("Upscale by", selection: $session.imageUpscaleAmount) {
-                        Text("2×").tag(2)
-                        Text("4×").tag(4)
+                    Picker("VAE", selection: $session.imageVAE) {
+                        Text("Model default").tag("")
+                        ForEach(imageVAEs) { Text($0.name).tag($0.id) }
+                        if !session.imageVAE.isEmpty, !imageVAEs.contains(where: { $0.id == session.imageVAE }) {
+                            Text(session.imageVAE).tag(session.imageVAE)
+                        }
                     }
-                    .pickerStyle(.segmented)
+                    Picker("Upscale", selection: $session.imageUpscaler) {
+                        ForEach(ImageUpscaler.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
+                    if session.imageUpscaler == ImageUpscaler.latent.rawValue {
+                        Stepper("Upscaler steps: \(session.imageLatentUpscalerSteps)",
+                                value: $session.imageLatentUpscalerSteps, in: 1...50)
+                    } else if !session.imageUpscaler.isEmpty {
+                        Picker("Upscale by", selection: $session.imageUpscaleAmount) {
+                            Text("2×").tag(2)
+                            Text("4×").tag(4)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    Picker("Face correction", selection: $session.imageFaceCorrection) {
+                        ForEach(FaceCorrection.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
+                    Toggle("CLIP skip", isOn: $session.imageClipSkip)
                 }
-                Picker("Face correction", selection: $session.imageFaceCorrection) {
-                    ForEach(FaceCorrection.allCases) { Text($0.label).tag($0.rawValue) }
-                }
-                Toggle("CLIP skip", isOn: $session.imageClipSkip)
                 TextField("Negative prompt (optional)", text: $session.imageNegativePrompt, axis: .vertical)
                     .lineLimit(1...3)
                 Text("Prompts in this chat are sent to the image server; the rendered image appears in the reply.")
@@ -451,6 +465,47 @@ struct SessionConfigView: View {
             imageLoadError = (error as? LocalizedError)?.errorDescription ?? "Couldn't reach the image server."
         }
         imageTesting = false
+    }
+
+    private var isComfyUI: Bool { ImageBackendKind(rawValue: imageBackendKind) == .comfyUI }
+    private var comfyTemplates: [ComfyWorkflowTemplate] { ComfyTemplateLibrary.decode(comfyTemplatesJSON) }
+    private var selectedComfyTemplate: ComfyWorkflowTemplate? {
+        ComfyTemplateLibrary.template(id: session.comfyTemplateID, in: comfyTemplatesJSON)
+    }
+
+    /// ComfyUI workflow picker plus a pre-flight warning when the chosen template needs models or
+    /// custom nodes the server doesn't have.
+    @ViewBuilder private var comfyTemplatePicker: some View {
+        Picker("Workflow", selection: $session.comfyTemplateID) {
+            Text("Select a workflow…").tag("")
+            ForEach(comfyTemplates) { Text($0.name).tag($0.id.uuidString) }
+        }
+        if comfyTemplates.isEmpty {
+            Label("Import a ComfyUI workflow in Settings → Image Generation first.", systemImage: "info.circle")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        ForEach(comfyIssues.filter(\.isBlocking), id: \.self) { issue in
+            Label(issue.message, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption).foregroundStyle(.orange)
+        }
+    }
+
+    /// Seeds this chat's controls from the template's authored defaults, so a turbo model's real
+    /// steps/cfg/size/model apply instead of the app's Easy-Diffusion defaults.
+    private func applyComfyTemplateDefaults() {
+        guard let template = selectedComfyTemplate else { return }
+        if let steps = template.defaultInt(.steps) { session.imageSteps = steps }
+        if let cfg = template.defaultDouble(.cfg) { session.imageCFG = cfg }
+        if let width = template.defaultInt(.width) { session.imageSize = width }
+        if let model = template.defaultString(.model) { session.imageModel = model }
+    }
+
+    /// Checks the chosen template against the server (missing models / custom nodes) for a warning.
+    private func validateComfyTemplate() async {
+        comfyIssues = []
+        guard isComfyUI, let template = selectedComfyTemplate, !imageServerURL.isEmpty else { return }
+        let provider = ComfyUIProvider(baseURLString: imageServerURL, template: template)
+        comfyIssues = (try? await provider.validate()) ?? []
     }
 
     private var speechSection: some View {
