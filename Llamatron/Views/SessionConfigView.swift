@@ -44,6 +44,7 @@ struct SessionConfigView: View {
     @AppStorage(SettingsKey.imageServerURL) private var imageServerURL = SettingsDefault.imageServerURL
     @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
     @State private var imageModels: [ImageModel] = []
+    @State private var imageVAEs: [ImageModel] = []
     @State private var imageTesting = false
     @State private var imageLoadError: String?
 
@@ -398,6 +399,33 @@ struct SessionConfigView: View {
                 Stepper(value: $session.imageCFG, in: 1...20, step: 0.5) {
                     Text("Guidance (CFG): \(session.imageCFG, specifier: "%.1f")")
                 }
+                Picker("Sampler", selection: $session.imageSampler) {
+                    ForEach(ImageSampler.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                Picker("VAE", selection: $session.imageVAE) {
+                    Text("Model default").tag("")
+                    ForEach(imageVAEs) { Text($0.name).tag($0.id) }
+                    if !session.imageVAE.isEmpty, !imageVAEs.contains(where: { $0.id == session.imageVAE }) {
+                        Text(session.imageVAE).tag(session.imageVAE)
+                    }
+                }
+                Picker("Upscale", selection: $session.imageUpscaler) {
+                    ForEach(ImageUpscaler.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                if session.imageUpscaler == ImageUpscaler.latent.rawValue {
+                    Stepper("Upscaler steps: \(session.imageLatentUpscalerSteps)",
+                            value: $session.imageLatentUpscalerSteps, in: 1...50)
+                } else if !session.imageUpscaler.isEmpty {
+                    Picker("Upscale by", selection: $session.imageUpscaleAmount) {
+                        Text("2×").tag(2)
+                        Text("4×").tag(4)
+                    }
+                    .pickerStyle(.segmented)
+                }
+                Picker("Face correction", selection: $session.imageFaceCorrection) {
+                    ForEach(FaceCorrection.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                Toggle("CLIP skip", isOn: $session.imageClipSkip)
                 TextField("Negative prompt (optional)", text: $session.imageNegativePrompt, axis: .vertical)
                     .lineLimit(1...3)
                 Text("Prompts in this chat are sent to the image server; the rendered image appears in the reply.")
@@ -416,6 +444,7 @@ struct SessionConfigView: View {
         do {
             let fetched = try await provider.listModels().sorted { $0.name < $1.name }
             imageModels = fetched
+            imageVAEs = (try? await provider.listVAEs())?.sorted { $0.name < $1.name } ?? []
             if session.imageModel.isEmpty, let first = fetched.first { session.imageModel = first.id }
             if fetched.isEmpty { imageLoadError = "Connected, but found no image models." }
         } catch {
