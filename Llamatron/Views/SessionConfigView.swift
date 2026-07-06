@@ -766,17 +766,16 @@ struct SessionConfigView: View {
     }
 }
 
-/// A sheet that lists workflows discovered on the ComfyUI server — recently run, saved, and (opt-in)
-/// built-in templates — and imports the chosen one, auto-bound, into the library. No manual export.
+/// A sheet that lists the text-to-image workflows you've run on the ComfyUI server (from its
+/// history, already in API format) and imports the chosen one, auto-bound, into the library — no
+/// manual export.
 private struct ComfyServerImportSheet: View {
     let serverURL: String
     let onImport: (ComfyWorkflowTemplate) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var loading = true
-    @State private var workflows: [ComfyServerWorkflow] = []
-    @State private var includeBundled = false
-    @State private var loadError: String?
+    @State private var templates: [ComfyWorkflowTemplate] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -788,72 +787,44 @@ private struct ComfyServerImportSheet: View {
             .padding()
             Divider()
             content
-            Divider()
-            HStack {
-                Toggle("Include built-in templates (slower)", isOn: $includeBundled)
-                    .onChange(of: includeBundled) { Task { await load() } }
-                Spacer()
-                if loading { ProgressView().controlSize(.small) }
-            }
-            .padding(.horizontal).padding(.vertical, 8)
         }
-        .frame(width: 470, height: 540)
+        .frame(width: 460, height: 460)
         .task { await load() }
     }
 
     @ViewBuilder private var content: some View {
-        if loading && workflows.isEmpty {
-            ProgressView("Loading workflows…").frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let loadError {
-            ContentUnavailableView("Couldn't reach the server", systemImage: "exclamationmark.triangle",
-                                   description: Text(loadError))
-        } else if workflows.isEmpty {
-            ContentUnavailableView("No importable workflows", systemImage: "tray",
-                                   description: Text("Run a workflow in ComfyUI or save one, then try again."))
+        if loading {
+            ProgressView("Loading text-to-image workflows…").frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if templates.isEmpty {
+            ContentUnavailableView("No text-to-image workflows", systemImage: "photo.on.rectangle.angled",
+                                   description: Text("Run a text-to-image workflow in ComfyUI, then it'll show up here to import."))
         } else {
-            List {
-                ForEach([ComfyServerWorkflow.Source.history, .saved, .bundled], id: \.self) { source in
-                    let group = workflows.filter { $0.source == source }
-                    if !group.isEmpty {
-                        Section(source.label) { ForEach(group) { workflowRow($0) } }
+            List(templates) { template in
+                Button {
+                    onImport(template)
+                    dismiss()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(template.name)
+                            Text("\(template.parameters.count) parameters detected")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "plus.circle")
                     }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
-    }
-
-    private func workflowRow(_ workflow: ComfyServerWorkflow) -> some View {
-        let template = ComfyWorkflowTemplate.autobound(name: workflow.name, workflowJSON: workflow.apiWorkflow)
-        let usable = !template.parameters.isEmpty
-        return Button {
-            onImport(template)
-            dismiss()
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(workflow.name)
-                    Text(usable ? "\(template.parameters.count) parameters detected"
-                                : "No text-to-image parameters — can't drive this one")
-                        .font(.caption).foregroundStyle(usable ? Color.secondary : Color.orange)
-                }
-                Spacer()
-                if usable { Image(systemName: "plus.circle") }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!usable)
     }
 
     private func load() async {
         loading = true
-        loadError = nil
-        guard let client = ComfyUIClient(baseURLString: serverURL) else {
-            loadError = "The image server address isn't a valid URL."
-            loading = false
-            return
+        if let client = ComfyUIClient(baseURLString: serverURL) {
+            templates = await client.serverWorkflows()
         }
-        workflows = await client.serverWorkflows(includeBundled: includeBundled)
         loading = false
     }
 }

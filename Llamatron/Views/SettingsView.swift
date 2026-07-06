@@ -326,7 +326,7 @@ struct SettingsView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(template.name)
-                        Text("\(template.kind.label) · \(template.parameters.count) parameters detected")
+                        Text("\(template.parameters.count) parameters detected")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -356,9 +356,8 @@ struct SettingsView: View {
         do {
             let data = try Data(contentsOf: url)
             let name = url.deletingPathExtension().lastPathComponent
-            let template = ComfyWorkflowTemplate.autobound(name: name, workflowJSON: data)
-            guard !template.parameters.isEmpty else {
-                comfyImportStatus = "No parameters found in “\(name)”. Make sure it's saved in API format, not the default workflow format."
+            guard let template = ComfyWorkflowTemplate.textToImage(name: name, workflowJSON: data) else {
+                comfyImportStatus = "“\(name)” isn't a text-to-image workflow (no prompt/model/seed detected). Make sure it's saved in API format."
                 return
             }
             var templates = ComfyTemplateLibrary.decode(comfyTemplatesJSON)
