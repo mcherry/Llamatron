@@ -21,6 +21,7 @@ struct SessionConfigView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \PromptPreset.name) private var presets: [PromptPreset]
     @State private var models: [OllamaModel] = []
+    @State private var embeddingModels: [OllamaModel] = []
     @State private var loading = false
     @State private var loadError: String?
     @State private var customContext = ""
@@ -41,6 +42,9 @@ struct SessionConfigView: View {
     @State private var maxTokensText = ""
 
     @AppStorage(SettingsKey.imageGenEnabled) private var imageGenEnabled = false
+    @AppStorage(SettingsKey.llamaServerURL) private var llamaServerURL = SettingsDefault.llamaServerURL
+    @AppStorage(SettingsKey.ttsFeatureEnabled) private var ttsFeatureEnabled = SettingsDefault.ttsFeatureEnabled
+    @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
     @AppStorage(SettingsKey.imageServerURL) private var imageServerURL = SettingsDefault.imageServerURL
     @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
     @AppStorage(SettingsKey.comfyTemplates) private var comfyTemplatesJSON = "[]"
@@ -68,23 +72,33 @@ struct SessionConfigView: View {
 
             Form {
                 backendSection
-                if session.backend == .ollama {
+                if profile.listsModels && profile.isChatBackend {
                     modelSection
+                }
+                if profile.supportsVision {
                     visionSection
+                }
+                if profile.contextWindowAdjustable {
                     contextSection
+                } else if profile.isChatBackend && !profile.isOnDevice {
+                    fixedContextSection
+                }
+                if profile.supportsSampling {
                     generationSection
                 }
-                if session.backend == .appleIntelligence {
+                if profile.isOnDevice {
                     appleGenerationSection
                 }
-                if session.backend == .imageGeneration {
+                if profile.producesImages {
                     imageSection
                 }
-                if session.backend != .imageGeneration {
+                if profile.isChatBackend {
                     historySection
                     contextStrategySection
                     systemPromptSection
-                    speechSection
+                    if ttsFeatureEnabled {
+                        speechSection
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -92,6 +106,7 @@ struct SessionConfigView: View {
         .frame(width: 470, height: 620)
         .task { await loadModels() }
         .task(id: session.backend) {
+            await loadModels()
             if session.backend == .imageGeneration {
                 await loadImageModels()
                 await validateComfyTemplate()
@@ -108,10 +123,15 @@ struct SessionConfigView: View {
         .onAppear(perform: loadParameterFields)
     }
 
+    /// The capability profile for the session's current backend — drives which
+    /// settings sections appear, so the UI never shows a control the backend can't use.
+    private var profile: BackendProfile { session.backend.profile }
+
     private var backendSection: some View {
         Section("Backend") {
             Picker("Engine", selection: $session.backend) {
                 Text(BackendKind.ollama.label).tag(BackendKind.ollama)
+                Text(BackendKind.llamaServer.label).tag(BackendKind.llamaServer)
                 // Offer Apple Intelligence only when the system reports it available,
                 // but keep an already-chosen value visible so it isn't silently reset.
                 if appleStatus == .available || session.backend == .appleIntelligence {
@@ -120,6 +140,12 @@ struct SessionConfigView: View {
                 if imageGenEnabled || session.backend == .imageGeneration {
                     Text(BackendKind.imageGeneration.label).tag(BackendKind.imageGeneration)
                 }
+            }
+
+            if session.backend == .llamaServer {
+                Text("Talks to a llama.cpp llama-server at \(llamaServerURL) (OpenAI-compatible API). Change the address in Settings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             switch appleStatus {
@@ -233,16 +259,30 @@ struct SessionConfigView: View {
         }
     }
 
+    /// Read-only context-window display for server backends whose window is fixed at
+    /// launch (llama.cpp `-c`), which the app discovers rather than lets the user set.
+    private var fixedContextSection: some View {
+        Section("Context Window") {
+            if let modelMaxContext {
+                LabeledContent("Window", value: ContextSize.label(modelMaxContext))
+            }
+            Text("Fixed by the server at launch (llama.cpp `-c`). The app fits context and history to this window; you don't set it here.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
     private var generationSection: some View {
         Section("Generation") {
-            Picker("Reasoning", selection: $session.reasoningMode) {
-                ForEach(ReasoningMode.allCases) { mode in
-                    Text(mode.label).tag(mode)
+            if profile.supportsReasoning {
+                Picker("Reasoning", selection: $session.reasoningMode) {
+                    ForEach(ReasoningMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
                 }
+                Text("Reasoning models (deepseek-r1, qwen3, gpt-oss) show their thinking in a collapsible section. Automatic uses the model's default; turn it Off to minimize it. Forcing it On asks for more (errors on Ollama models that don't support thinking).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            Text("Reasoning models (deepseek-r1, qwen3) show their thinking in a collapsible section. Automatic uses the model's default; turn it Off to hide it. Forcing it On errors on models that don't support thinking.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
 
             parameterField("Temperature", text: $tempText,
                            help: "Higher values make output more random and creative; lower values make it more focused and predictable. Blank uses the server default.") {
@@ -566,6 +606,15 @@ struct SessionConfigView: View {
         }
     }
 
+    /// Embedding-model names for the retrieval picker, always including the current
+    /// selection and the default so the value is never orphaned.
+    private var embeddingChoices: [String] {
+        var names = Set(embeddingModels.map(\.name))
+        names.insert(SettingsDefault.embeddingModel)
+        names.insert(embeddingModel)
+        return names.sorted()
+    }
+
     private var contextStrategySection: some View {
         Section("Attached Files") {
             Picker("Strategy", selection: $session.contextMode) {
@@ -579,6 +628,16 @@ struct SessionConfigView: View {
             Text("Automatic picks by size: small files are sent whole, larger files are retrieved or summarized, with truncation as a last resort. Re-run a chat with a different setting to try another approach.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if profile.supportsRetrieval {
+                Picker("Embedding model", selection: $embeddingModel) {
+                    ForEach(embeddingChoices, id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                Text("Finds the most relevant excerpts of attached files (retrieval). App-wide; pick one available on your server.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -651,7 +710,7 @@ struct SessionConfigView: View {
     private var systemPromptCostLabel: String {
         let tokens = TokenEstimator.estimate(session.systemPrompt)
         var label = "~\(tokens) tokens"
-        if session.backend == .ollama, session.contextSize > 0 {
+        if profile.isChatBackend, !profile.isOnDevice, session.contextSize > 0 {
             let percent = Double(tokens) / Double(session.contextSize) * 100
             let pctText = percent > 0 && percent < 0.1
                 ? "<0.1"
@@ -679,9 +738,16 @@ struct SessionConfigView: View {
     /// the chosen size exceeds it.
     private func loadModelContext() async {
         modelMaxContext = nil
-        guard session.backend == .ollama, !session.modelName.isEmpty,
-              let client = OllamaClient(baseURLString: serverURL) else { return }
-        modelMaxContext = try? await client.modelContextLength(session.modelName)
+        guard session.backend == .ollama || session.backend == .llamaServer,
+              !session.modelName.isEmpty,
+              let client = serverBackend() else { return }
+        let discovered = try? await client.modelContextLength(session.modelName)
+        modelMaxContext = discovered
+        // A llama.cpp server's window is fixed at launch; adopt it as the session's
+        // context size so budgeting uses the real window (the user can't set it).
+        if session.backend == .llamaServer, let discovered, discovered > 0 {
+            session.contextSize = discovered
+        }
     }
 
     /// Mirrors the session's stored parameters into the local text fields.
@@ -728,7 +794,8 @@ struct SessionConfigView: View {
     }
 
     private func loadModels() async {
-        guard let client = OllamaClient(baseURLString: serverURL) else {
+        guard session.backend == .ollama || session.backend == .llamaServer else { return }
+        guard let client = serverBackend() else {
             loadError = "Invalid server URL. Check Settings."
             return
         }
@@ -739,10 +806,28 @@ struct SessionConfigView: View {
             models = all
                 .filter { !$0.isEmbeddingModel }
                 .sorted { $0.name < $1.name }
+            embeddingModels = all
+                .filter { $0.isEmbeddingModel }
+                .sorted { $0.name < $1.name }
+            // llama.cpp serves a single loaded model; auto-select it so budgeting and
+            // token calibration key on the right name.
+            if session.backend == .llamaServer, session.modelName.isEmpty, let first = models.first {
+                session.modelName = first.name
+            }
         } catch {
             loadError = error.localizedDescription
         }
         loading = false
+    }
+
+    /// The server backend for the session's engine, used for model listing and
+    /// context-length lookups. Ollama and llama.cpp use different URLs and clients.
+    private func serverBackend() -> (any ServerBackend)? {
+        switch session.backend {
+        case .ollama: return OllamaClient(baseURLString: serverURL)
+        case .llamaServer: return LlamaServerClient(baseURLString: llamaServerURL)
+        default: return nil
+        }
     }
 
     /// Models that can accept image input (vision capability).

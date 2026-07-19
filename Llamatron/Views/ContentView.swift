@@ -9,6 +9,7 @@ struct ContentView: View {
     @AppStorage(SettingsKey.didCompleteFirstRun) private var didCompleteFirstRun = false
     @AppStorage(SettingsKey.defaultContextSize) private var defaultContextSize = SettingsDefault.contextSize
     @AppStorage(SettingsKey.defaultModel) private var defaultModel = ""
+    @AppStorage(SettingsKey.defaultBackend) private var defaultBackend = SettingsDefault.defaultBackend
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \ChatSession.updatedAt, order: .reverse) private var sessions: [ChatSession]
@@ -72,6 +73,7 @@ struct ContentView: View {
 
     private func newSession() {
         let session = ChatSession(modelName: defaultModel, contextSize: defaultContextSize)
+        session.backend = BackendKind(rawValue: defaultBackend) ?? .ollama
         modelContext.insert(session)
         selectedID = session.id
     }
@@ -101,6 +103,8 @@ private struct SessionRow: View {
         switch session.backend {
         case .ollama:
             return session.modelName.isEmpty ? "No model set" : session.modelName
+        case .llamaServer:
+            return session.modelName.isEmpty ? BackendKind.llamaServer.label : session.modelName
         case .appleIntelligence:
             return BackendKind.appleIntelligence.label
         case .imageGeneration:

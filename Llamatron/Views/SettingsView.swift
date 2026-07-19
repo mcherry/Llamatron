@@ -6,14 +6,18 @@ import UniformTypeIdentifiers
 /// App-wide settings (Cmd-,). Server address plus defaults applied to new sessions.
 struct SettingsView: View {
     @AppStorage(SettingsKey.serverURL) private var serverURL = SettingsDefault.serverURL
+    @AppStorage(SettingsKey.llamaServerURL) private var llamaServerURL = SettingsDefault.llamaServerURL
     @AppStorage(SettingsKey.defaultContextSize) private var defaultContextSize = SettingsDefault.contextSize
     @AppStorage(SettingsKey.defaultModel) private var defaultModel = ""
+    @AppStorage(SettingsKey.defaultBackend) private var defaultBackend = SettingsDefault.defaultBackend
     @AppStorage(SettingsKey.requestTimeout) private var requestTimeout = SettingsDefault.timeout
-    @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
     @AppStorage(SettingsKey.diagramGuidance) private var diagramGuidance = false
     @AppStorage(SettingsKey.rightSizeContext) private var rightSizeContext = SettingsDefault.rightSizeContext
     @AppStorage(SettingsKey.keepAliveMinutes) private var keepAliveMinutes = SettingsDefault.keepAliveMinutes
 
+    @AppStorage(SettingsKey.ttsFeatureEnabled) private var ttsFeatureEnabled = SettingsDefault.ttsFeatureEnabled
+    @AppStorage(SettingsKey.sttFeatureEnabled) private var sttFeatureEnabled = SettingsDefault.sttFeatureEnabled
+    @AppStorage(SettingsKey.webSearchEnabled) private var webSearchEnabled = SettingsDefault.webSearchEnabled
     @AppStorage(SettingsKey.searchProvider) private var searchProvider = WebSearch.ProviderKind.none.rawValue
     @AppStorage(SettingsKey.searxngURL) private var searxngURL = ""
     @AppStorage(SettingsKey.braveAPIKey) private var braveAPIKey = ""
@@ -56,52 +60,42 @@ struct SettingsView: View {
     @State private var ttsTestStatus: String?
     @State private var ttsTestOK = false
 
+    @State private var configuringBackend: BackendKind = .ollama
+    @State private var backendTesting = false
+    @State private var backendTestStatus: String?
+    @State private var backendTestOK = false
+
     private var chatModels: [OllamaModel] {
         allModels.filter { !$0.isEmbeddingModel }
     }
 
-    /// Embedding-model names for the retrieval picker, always including the current
-    /// selection and the default so the value is never orphaned.
-    private var embeddingChoices: [String] {
-        var names = Set(allModels.filter(\.isEmbeddingModel).map(\.name))
-        names.insert(SettingsDefault.embeddingModel)
-        names.insert(embeddingModel)
-        return names.sorted()
-    }
-
     var body: some View {
         Form {
-            Section {
-                ServerSettingsForm()
-            }
-            Section("Defaults for New Sessions") {
-                Picker("Default model", selection: $defaultModel) {
-                    Text("None").tag("")
-                    ForEach(chatModels) { model in
-                        Text(model.name).tag(model.name)
-                    }
-                    if !defaultModel.isEmpty,
-                       !chatModels.contains(where: { $0.name == defaultModel }) {
-                        Text(defaultModel).tag(defaultModel)
+            backendsSection
+            Section("New Session Defaults") {
+                Picker("Backend", selection: $defaultBackend) {
+                    ForEach(configurableBackends) { kind in
+                        Text(kind.label).tag(kind.rawValue)
                     }
                 }
-                Picker("Context size", selection: $defaultContextSize) {
-                    ForEach(ContextSize.presets, id: \.self) { size in
-                        Text(ContextSize.label(size)).tag(size)
+                if defaultBackendKind == .ollama {
+                    Picker("Model", selection: $defaultModel) {
+                        Text("None").tag("")
+                        ForEach(chatModels) { model in
+                            Text(model.name).tag(model.name)
+                        }
+                        if !defaultModel.isEmpty,
+                           !chatModels.contains(where: { $0.name == defaultModel }) {
+                            Text(defaultModel).tag(defaultModel)
+                        }
+                    }
+                    Picker("Context size", selection: $defaultContextSize) {
+                        ForEach(ContextSize.presets, id: \.self) { size in
+                            Text(ContextSize.label(size)).tag(size)
+                        }
                     }
                 }
-                Toggle("Right-size context to each request", isOn: $rightSizeContext)
-                Text("Sends only as much context window as a request needs (up to the size above), capped to the model's real limit. Uses less memory and loads faster on modest hardware; turn off to always send the full size.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Picker("Keep model loaded", selection: $keepAliveMinutes) {
-                    Text("Server default (5 min)").tag(5)
-                    Text("15 minutes").tag(15)
-                    Text("30 minutes").tag(30)
-                    Text("1 hour").tag(60)
-                    Text("Always loaded").tag(-1)
-                }
-                Text("How long Ollama keeps the model in memory after a reply. Longer keeps it warm for faster follow-ups but holds VRAM.")
+                Text("What a new conversation starts with. You can change any of it per session.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -113,27 +107,9 @@ struct SettingsView: View {
                     Text("300 seconds").tag(300)
                 }
             }
-            Section("Models") {
-                Button {
-                    showingModelManager = true
-                } label: {
-                    Label("Manage Models…", systemImage: "shippingbox")
-                }
-                Text("Pull new models, see what's loaded, and free space by deleting models on the server.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Section("Attached Files") {
-                Picker("Embedding model", selection: $embeddingModel) {
-                    ForEach(embeddingChoices, id: \.self) { name in
-                        Text(name).tag(name)
-                    }
-                }
-                Text("Used to find relevant excerpts in attached files (retrieval). Pick an embedding model available on your server.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             Section("Web Search") {
+                Toggle("Enable web search", isOn: $webSearchEnabled)
+                if webSearchEnabled {
                 Picker("Provider", selection: $searchProvider) {
                     ForEach(WebSearch.ProviderKind.allCases) { kind in
                         Text(kind.label).tag(kind.rawValue)
@@ -161,6 +137,7 @@ struct SettingsView: View {
                 }
                 Text("Find web pages to add as context sources from the globe button in the composer. Search uses sanctioned APIs only (never scraping); result pages are fetched politely — robots.txt and per-host rate limits apply.")
                     .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section("Image Generation") {
                 Toggle("Enable image generation", isOn: $imageGenEnabled)
@@ -204,6 +181,8 @@ struct SettingsView: View {
                 }
             }
             Section("Text-to-Speech") {
+                Toggle("Enable text-to-speech", isOn: $ttsFeatureEnabled)
+                if ttsFeatureEnabled {
                 Picker("Engine", selection: $ttsEngine) {
                     ForEach(TTSEngine.allCases) { Text($0.label).tag($0.rawValue) }
                 }
@@ -245,8 +224,11 @@ struct SettingsView: View {
                 }
                 Text("Enable speech per chat in Session Settings (with an optional auto-speak).")
                     .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section("Speech-to-Text") {
+                Toggle("Enable speech-to-text", isOn: $sttFeatureEnabled)
+                if sttFeatureEnabled {
                 Toggle("Auto-send after a pause", isOn: $dictationAutoSend)
                 if dictationAutoSend {
                     Stepper(value: $dictationPauseSeconds, in: 0.5...5.0, step: 0.5) {
@@ -263,6 +245,7 @@ struct SettingsView: View {
                 }
                 Text("Requires Dictation to be turned on in System Settings ▸ Keyboard.")
                     .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section("Rendering") {
                 Toggle("Guide models to render diagrams inline", isOn: $diagramGuidance)
@@ -289,6 +272,131 @@ struct SettingsView: View {
             allModels = fetched.sorted { $0.name < $1.name }
         }
         loadingModels = false
+    }
+
+    /// The chat/LLM backends the user can connect. Image generation is an optional
+    /// Feature configured in its own section.
+    private var configurableBackends: [BackendKind] {
+        BackendKind.allCases.filter { $0.profile.isChatBackend }
+    }
+
+    private var defaultBackendKind: BackendKind {
+        BackendKind(rawValue: defaultBackend) ?? .ollama
+    }
+
+    private func backendURLBinding() -> Binding<String> {
+        switch configuringBackend {
+        case .llamaServer: return $llamaServerURL
+        default: return $serverURL
+        }
+    }
+
+    private var backendURLPlaceholder: String {
+        configuringBackend == .llamaServer ? "http://192.168.1.10:8080" : "http://localhost:11434"
+    }
+
+    private var backendBlurb: String {
+        switch configuringBackend {
+        case .ollama:
+            return "A local or networked Ollama server. Streams chat, lists and manages models, and provides embeddings for retrieval over attachments."
+        case .llamaServer:
+            return "A llama.cpp llama-server (OpenAI-compatible API). Serves one model at a context window fixed at launch. For retrieval over attachments, start it with `--embeddings --pooling last`."
+        case .appleIntelligence:
+            return "Apple's on-device model. Nothing to configure — it runs entirely on this Mac when Apple Intelligence is enabled in System Settings."
+        case .imageGeneration:
+            return ""
+        }
+    }
+
+    /// One "Backends" area: pick a backend, configure its connection, and test it. Only
+    /// the controls that backend needs appear — driven by its capability profile.
+    private var backendsSection: some View {
+        let profile = configuringBackend.profile
+        return Section("Backends") {
+            Picker("Backend", selection: $configuringBackend) {
+                ForEach(configurableBackends) { kind in
+                    Text(kind.label).tag(kind)
+                }
+            }
+            if profile.needsServerURL {
+                TextField(backendURLPlaceholder, text: backendURLBinding())
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                HStack(spacing: 8) {
+                    Button("Test Connection") { Task { await runBackendTest() } }
+                        .disabled(backendTesting || backendURLBinding().wrappedValue.isEmpty)
+                    if backendTesting { ProgressView().controlSize(.small) }
+                    if let backendTestStatus {
+                        Label(backendTestStatus, systemImage: backendTestOK ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundStyle(backendTestOK ? Color.green : Color.red)
+                            .font(.caption).lineLimit(2)
+                    }
+                }
+            } else if profile.isOnDevice {
+                Label(AppleIntelligence.statusMessage,
+                      systemImage: AppleIntelligence.isAvailable ? "checkmark.seal" : "info.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if !backendBlurb.isEmpty {
+                Text(backendBlurb).font(.caption).foregroundStyle(.secondary)
+            }
+            if profile.supportsModelManagement {
+                Button { showingModelManager = true } label: {
+                    Label("Manage Models…", systemImage: "shippingbox")
+                }
+            }
+            if profile.contextWindowAdjustable {
+                Toggle("Right-size context to each request", isOn: $rightSizeContext)
+                Text("Sends only as much context window as a request needs, capped to the model's real limit. Uses less memory and loads faster; turn off to always send the full size.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if profile.supportsKeepAlive {
+                Picker("Keep model loaded", selection: $keepAliveMinutes) {
+                    Text("Server default (5 min)").tag(5)
+                    Text("15 minutes").tag(15)
+                    Text("30 minutes").tag(30)
+                    Text("1 hour").tag(60)
+                    Text("Always loaded").tag(-1)
+                }
+                Text("How long Ollama keeps the model in memory after a reply. Longer keeps it warm; holds VRAM.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Tests the selected backend's connection: Ollama via its version endpoint,
+    /// llama.cpp by listing its loaded model. Apple needs no connection.
+    private func runBackendTest() async {
+        backendTesting = true
+        backendTestStatus = nil
+        defer { backendTesting = false }
+        switch configuringBackend {
+        case .ollama:
+            switch await ServerProbe.checkVersion(baseURL: serverURL) {
+            case .success(let version):
+                backendTestOK = true
+                backendTestStatus = "Connected to Ollama \(version)."
+            case .failure(let reason):
+                backendTestOK = false
+                backendTestStatus = reason
+            }
+        case .llamaServer:
+            guard let client = LlamaServerClient(baseURLString: llamaServerURL) else {
+                backendTestOK = false
+                backendTestStatus = "That doesn't look like a valid URL."
+                return
+            }
+            do {
+                let models = try await client.models()
+                backendTestOK = true
+                backendTestStatus = models.first.map { "Connected · \($0.name)" } ?? "Connected."
+            } catch {
+                backendTestOK = false
+                backendTestStatus = error.localizedDescription
+            }
+        default:
+            break
+        }
     }
 
     /// Tests the configured image server by listing its models and populating the default-model

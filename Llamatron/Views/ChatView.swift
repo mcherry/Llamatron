@@ -13,6 +13,7 @@ struct ChatView: View {
 
     @Environment(\.modelContext) private var modelContext
     @AppStorage(SettingsKey.serverURL) private var serverURL = SettingsDefault.serverURL
+    @AppStorage(SettingsKey.llamaServerURL) private var llamaServerURL = SettingsDefault.llamaServerURL
     @AppStorage(SettingsKey.requestTimeout) private var requestTimeout = SettingsDefault.timeout
     @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
     @AppStorage(SettingsKey.diagramGuidance) private var diagramGuidance = false
@@ -28,6 +29,9 @@ struct ChatView: View {
     @AppStorage(SettingsKey.dictationAutoSend) private var dictationAutoSend = false
     @AppStorage(SettingsKey.dictationPauseSeconds) private var dictationPauseSeconds = SettingsDefault.dictationPauseSeconds
     @AppStorage(SettingsKey.conversationMode) private var conversationModeEnabled = false
+    @AppStorage(SettingsKey.ttsFeatureEnabled) private var ttsFeatureEnabled = SettingsDefault.ttsFeatureEnabled
+    @AppStorage(SettingsKey.sttFeatureEnabled) private var sttFeatureEnabled = SettingsDefault.sttFeatureEnabled
+    @AppStorage(SettingsKey.webSearchEnabled) private var webSearchEnabled = SettingsDefault.webSearchEnabled
     @AppStorage(SettingsKey.dictationVoiceProcessing) private var voiceProcessing = SettingsDefault.dictationVoiceProcessing
 
     @State private var viewModel = ConversationController()
@@ -173,8 +177,8 @@ struct ChatView: View {
                  onSend: send,
                  onStop: viewModel.stop,
                  onAttach: { showingImporter = true },
-                 onAddWebSource: { showingAddWebSource = true },
-                 onWebSearch: { showingWebSearch = true },
+                 onAddWebSource: webSearchEnabled ? { showingAddWebSource = true } : nil,
+                 onWebSearch: webSearchEnabled ? { showingWebSearch = true } : nil,
                  onMic: conversationActive ? nil : micAction,
                  isDictating: dictation.isListening,
                  dictationUnavailable: dictation.isUnavailable,
@@ -184,13 +188,13 @@ struct ChatView: View {
 
     /// The mic toggle, or `nil` when speech recognition isn't available.
     private var micAction: (() -> Void)? {
-        guard dictation.isSupported else { return nil }
+        guard sttFeatureEnabled, dictation.isSupported else { return nil }
         return { toggleDictation() }
     }
 
     /// The conversation toggle, or `nil` when the feature is off or unsupported.
     private var conversationAction: (() -> Void)? {
-        guard conversationModeEnabled, dictation.isSupported else { return nil }
+        guard sttFeatureEnabled, conversationModeEnabled, dictation.isSupported else { return nil }
         return { toggleConversation() }
     }
 
@@ -217,7 +221,7 @@ struct ChatView: View {
                 HStack(spacing: 4) {
                     Image(systemName: session.backend.systemImage)
                     Text(engineLabel)
-                    if session.backend == .ollama {
+                    if session.backend == .ollama || session.backend == .llamaServer {
                         Text("·")
                         Text(ContextSize.label(session.contextSize))
                     }
@@ -323,6 +327,8 @@ struct ChatView: View {
         switch session.backend {
         case .ollama:
             return session.modelName.isEmpty ? "Choose model" : session.modelName
+        case .llamaServer:
+            return session.modelName.isEmpty ? "llama.cpp" : session.modelName
         case .appleIntelligence:
             return BackendKind.appleIntelligence.label
         case .imageGeneration:
@@ -461,8 +467,7 @@ struct ChatView: View {
         // The client may be nil (e.g. a blank server URL); that's fine for an Apple
         // Intelligence session. The view model validates what each backend needs.
         dictation.stop()
-        let client = OllamaClient(baseURLString: serverURL,
-                                  timeout: TimeInterval(requestTimeout))
+        let client = sessionServerBackend()
         let text = draft
         draft = ""
         speech.stop()
@@ -484,7 +489,7 @@ struct ChatView: View {
     /// Whether a per-message "read aloud" button should appear: TTS is on for this chat
     /// and the message is a non-empty assistant reply.
     private func speakEnabled(_ message: ChatMessage) -> Bool {
-        session.ttsEnabled && message.role == .assistant && !message.content.isEmpty
+        ttsFeatureEnabled && session.ttsEnabled && message.role == .assistant && !message.content.isEmpty
     }
 
     private var ttsConfig: SpeechController.Config {
@@ -564,7 +569,7 @@ struct ChatView: View {
     /// Whether auto-TTS will narrate replies (Apple is always ready; the server needs a
     /// URL + voice). When true, a generating reply is held hidden until its audio plays.
     private var narrationEngineReady: Bool {
-        guard session.ttsEnabled, session.ttsAutoSpeak else { return false }
+        guard ttsFeatureEnabled, session.ttsEnabled, session.ttsAutoSpeak else { return false }
         switch session.ttsEngine {
         case .apple: return true
         case .server: return TTS.isConfigured(enabled: true, serverURL: ttsServerURL) && !ttsVoice.isEmpty
@@ -665,17 +670,30 @@ struct ChatView: View {
         }
     }
 
+    /// The remote LLM server for this session. llama.cpp sessions talk to the
+    /// llama-server URL; every other backend uses the Ollama URL — which Ollama
+    /// sessions use for chat + retrieval and Apple Intelligence sessions use for
+    /// retrieval embeddings only.
+    private func sessionServerBackend() -> (any ServerBackend)? {
+        switch session.backend {
+        case .llamaServer:
+            return LlamaServerClient(baseURLString: llamaServerURL, timeout: TimeInterval(requestTimeout))
+        default:
+            return OllamaClient(baseURLString: serverURL, timeout: TimeInterval(requestTimeout))
+        }
+    }
+
     /// Loads which server models support vision, so the controller can choose the
     /// native-vision vs. preprocessor path when an image is attached.
     private func loadVisionCapabilities() async {
-        await viewModel.loadVisionCapabilities(client: OllamaClient(baseURLString: serverURL))
+        await viewModel.loadVisionCapabilities(client: sessionServerBackend())
     }
 
-    /// Looks up the session model's trained context length (`/api/show`) so budgeting
+    /// Looks up the session model's trained context length so budgeting
     /// and `num_ctx` respect the model's real limit instead of the user's raw preset.
     private func loadModelContextLength() async {
         await viewModel.loadModelContextLength(for: session,
-                                               client: OllamaClient(baseURLString: serverURL))
+                                               client: sessionServerBackend())
     }
 
     private func importURLs(_ urls: [URL]) {
