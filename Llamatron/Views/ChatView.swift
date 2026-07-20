@@ -53,6 +53,8 @@ struct ChatView: View {
     @State private var exportContentType: UTType = .plainText
     @State private var exportName = "session"
     @State private var showingExporter = false
+    /// 0...1 while a large attachment is being chunked/indexed; nil when idle.
+    @State private var indexingProgress: Double?
     @FocusState private var titleFocused: Bool
 
     private let bottomAnchor = "bottom-anchor"
@@ -74,6 +76,9 @@ struct ChatView: View {
             transcript
             if let status = viewModel.activityStatus {
                 activityBar(status)
+            }
+            if let progress = indexingProgress {
+                indexingBar(progress)
             }
             if let info = viewModel.contextInfo {
                 contextInfoBar(info)
@@ -112,6 +117,7 @@ struct ChatView: View {
         }
         .task(id: serverURL) { await loadVisionCapabilities() }
         .task(id: session.modelName) { await loadModelContextLength() }
+        .task(id: session.backend) { await resolveLlamaServerSession() }
         .onDisappear {
             speech.stop()
             dictation.stop()
@@ -706,12 +712,33 @@ struct ChatView: View {
                                                client: sessionServerBackend())
     }
 
+    /// For a llama.cpp session, adopt the server's loaded model and its launch-fixed
+    /// (`-c`) context window so the header, budgeting, and retrieval use the real values
+    /// without the user having to open Session Settings first. Otherwise a fresh chat
+    /// keeps the 32K default, which mismatches the server and mis-sizes large sources.
+    private func resolveLlamaServerSession() async {
+        guard session.backend == .llamaServer,
+              let client = LlamaServerClient(baseURLString: llamaServerURL,
+                                             timeout: TimeInterval(requestTimeout)) else { return }
+        if session.modelName.isEmpty, let first = try? await client.models().first {
+            session.modelName = first.name
+        }
+        if let window = try? await client.modelContextLength(session.modelName), window > 0 {
+            session.contextSize = window
+        }
+    }
+
     private func importURLs(_ urls: [URL]) {
-        for url in urls {
-            do {
-                try AttachmentLoader.load(from: url, into: session, modelContext: modelContext)
-            } catch {
-                viewModel.errorMessage = error.localizedDescription
+        Task { @MainActor in
+            indexingProgress = 0
+            defer { indexingProgress = nil }
+            for url in urls {
+                do {
+                    try await AttachmentLoader.load(from: url, into: session,
+                                                    modelContext: modelContext) { indexingProgress = $0 }
+                } catch {
+                    viewModel.errorMessage = error.localizedDescription
+                }
             }
         }
     }
@@ -719,10 +746,25 @@ struct ChatView: View {
     /// Stores a fetched web page or pasted note as a retrievable text attachment, so it
     /// rides the existing retrieval pipeline like any other attached file.
     private func addWebSource(title: String, content: String) {
-        AttachmentLoader.makeTextAttachment(name: title.isEmpty ? "Source" : title,
-                                            text: content,
-                                            into: session,
-                                            modelContext: modelContext)
-        session.updatedAt = .now
+        Task { @MainActor in
+            indexingProgress = 0
+            defer { indexingProgress = nil }
+            await AttachmentLoader.makeTextAttachment(name: title.isEmpty ? "Source" : title,
+                                                      text: content,
+                                                      into: session,
+                                                      modelContext: modelContext) { indexingProgress = $0 }
+            session.updatedAt = .now
+        }
+    }
+
+    /// A thin progress bar shown while a large source is chunked and indexed in batches.
+    private func indexingBar(_ progress: Double) -> some View {
+        HStack(spacing: 8) {
+            ProgressView(value: progress)
+                .progressViewStyle(.linear)
+            Text("Indexing… \(Int(progress * 100))%")
+                .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 4)
     }
 }
