@@ -65,7 +65,7 @@ struct SettingsView: View {
     @State private var ttsTestStatus: String?
     @State private var ttsTestOK = false
 
-    @AppStorage("settings.configuringBackend") private var configuringBackendRaw = BackendKind.ollama.rawValue
+    @AppStorage("settings.configuringBackend") private var configuringBackendRaw = ""
     @State private var backendTesting = false
     @State private var backendTestStatus: String?
     @State private var backendTestOK = false
@@ -290,7 +290,9 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        #if os(macOS)
         .frame(width: 480, height: 640)
+        #endif
         .task {
             appleVoices = AppleSpeech.voices()
             await loadModels()
@@ -320,9 +322,12 @@ struct SettingsView: View {
     }
 
     /// Which backend the Backends section is configuring. Backed by @AppStorage so it
-    /// persists across Settings opens instead of snapping back to Ollama every time.
+    /// persists across Settings opens; when never chosen it follows the default backend
+    /// new chats use, so the section opens showing the backend you actually connected.
     private var configuringBackend: BackendKind {
-        BackendKind(rawValue: configuringBackendRaw) ?? .ollama
+        BackendKind(rawValue: configuringBackendRaw)
+            ?? BackendKind(rawValue: defaultBackend)
+            ?? .ollama
     }
 
     /// Caption under New chats, tailored to the chosen preset or default backend.
@@ -376,11 +381,9 @@ struct SettingsView: View {
         }
     }
 
-    /// A small "i" info icon with a hover tooltip, matching the session settings pattern.
+    /// A small "i" info affordance: a hover tooltip on macOS, a tap-to-show popover on iOS.
     private func infoButton(_ help: String) -> some View {
-        Image(systemName: "info.circle")
-            .foregroundStyle(.secondary)
-            .help(help)
+        InfoButton(text: help)
     }
 
     /// One "Backends" area: pick a backend, configure its connection, and test it. Only
@@ -388,7 +391,10 @@ struct SettingsView: View {
     private var backendsSection: some View {
         let profile = configuringBackend.profile
         return Section("Backends") {
-            Picker("Backend", selection: $configuringBackendRaw) {
+            Picker("Backend", selection: Binding(
+                get: { configuringBackend.rawValue },
+                set: { configuringBackendRaw = $0 }
+            )) {
                 ForEach(configurableBackends) { kind in
                     Text(kind.label).tag(kind.rawValue)
                 }
@@ -399,6 +405,9 @@ struct SettingsView: View {
                         TextField("", text: backendURLBinding(), prompt: Text(backendURLPlaceholder))
                             .textFieldStyle(.roundedBorder)
                             .autocorrectionDisabled()
+                            #if os(iOS)
+                            .textInputAutocapitalization(.never)
+                            #endif
                         infoButton(backendBlurb)
                     }
                 }

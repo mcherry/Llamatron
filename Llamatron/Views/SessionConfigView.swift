@@ -130,7 +130,9 @@ struct SessionConfigView: View {
             }
             .formStyle(.grouped)
         }
+        #if os(macOS)
         .frame(width: 470, height: 620)
+        #endif
         .task { await loadModels() }
         .task(id: session.backend) {
             await loadModels()
@@ -180,8 +182,10 @@ struct SessionConfigView: View {
                 } label: {
                     Label("Apply Preset", systemImage: "square.stack.3d.up")
                 }
+                #if os(macOS)
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                #endif
 
                 Spacer()
 
@@ -537,11 +541,9 @@ struct SessionConfigView: View {
         }
     }
 
-    /// A small "i" info icon with a hover tooltip describing the adjacent field.
+    /// A small "i" info affordance: a hover tooltip on macOS, a tap-to-show popover on iOS.
     private func infoButton(_ help: String) -> some View {
-        Image(systemName: "info.circle")
-            .foregroundStyle(.secondary)
-            .help(help)
+        InfoButton(text: help)
     }
 
     private var imageSection: some View {
@@ -778,8 +780,10 @@ struct SessionConfigView: View {
                 } label: {
                     Label("Library", systemImage: "books.vertical")
                 }
+                #if os(macOS)
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                #endif
 
                 Spacer()
 
@@ -796,6 +800,9 @@ struct SessionConfigView: View {
 
             TextEditor(text: $session.systemPrompt)
                 .font(.body)
+                #if os(iOS)
+                .scrollContentBackground(.hidden)
+                #endif
                 .frame(minHeight: 100)
             HStack {
                 Spacer()

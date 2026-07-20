@@ -46,6 +46,9 @@ struct FirstRunView: View {
                     TextField(placeholder, text: serverBinding)
                         .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()
+                        #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                        #endif
                     HStack(spacing: 8) {
                         Button("Test Connection") { Task { await runTest() } }
                             .disabled(testing || serverBinding.wrappedValue.isEmpty)
@@ -75,7 +78,9 @@ struct FirstRunView: View {
             }
         }
         .padding(24)
+        #if os(macOS)
         .frame(width: 480)
+        #endif
     }
 
     private func resetStatus() {

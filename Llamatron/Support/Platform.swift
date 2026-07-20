@@ -85,6 +85,35 @@ extension Color {
     }
 }
 
+/// An "i" info affordance: a hover tooltip on macOS (unchanged), and a tap-to-show
+/// popover on iOS/iPad, where there is no pointer hover.
+struct InfoButton: View {
+    let text: String
+    #if os(iOS)
+    @State private var showing = false
+    #endif
+
+    var body: some View {
+        #if os(macOS)
+        Image(systemName: "info.circle")
+            .foregroundStyle(.secondary)
+            .help(text)
+        #else
+        Button { showing = true } label: {
+            Image(systemName: "info.circle").foregroundStyle(.secondary)
+        }
+        .buttonStyle(.borderless)
+        .popover(isPresented: $showing) {
+            Text(text)
+                .font(.callout)
+                .padding()
+                .frame(maxWidth: 320)
+                .presentationCompactAdaptation(.popover)
+        }
+        #endif
+    }
+}
+
 #if os(iOS)
 import UIKit
 import UniformTypeIdentifiers
