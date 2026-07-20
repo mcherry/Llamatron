@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="Llamatron/Assets.xcassets/AppIcon.appiconset/icon_256x256.png" width="128" alt="Llamatron app icon">
+</p>
+
 # Llamatron
 
 A native **macOS and iPadOS** chat client and AI testbed for local and self-hosted large
