@@ -301,11 +301,14 @@ struct ChatView: View {
                 .padding()
             }
             .onChange(of: streamingTick) {
-                // Pin to the bottom without animating: starting a fresh 0.15s scroll
-                // animation on every streamed token overlaps the previous one, which
-                // overshoots the bottom and looks jittery. An instant snap follows the
-                // stream smoothly.
-                proxy.scrollTo(bottomAnchor, anchor: .bottom)
+                // Pin to the bottom without animating (a fresh animation per token overlaps
+                // the previous one and jitters). Defer the snap one runloop tick so it
+                // resolves against the *settled* layout: a large streamed chunk grows the
+                // last row after this fires, so scrolling synchronously lands short and the
+                // view only creeps down while text keeps streaming past the fold.
+                DispatchQueue.main.async {
+                    proxy.scrollTo(bottomAnchor, anchor: .bottom)
+                }
             }
             .onChange(of: viewModel.isStreaming) { _, streaming in
                 // When the reply finishes, its final layout can be taller than the streamed
@@ -342,7 +345,9 @@ struct ChatView: View {
     /// reasoning) stream in.
     private var streamingTick: Int {
         guard let last = visibleMessages.last else { return 0 }
-        return last.content.count + last.thinking.count
+        // UTF-8 byte counts are cheaper than grapheme counts on the long, fast-growing
+        // strings a streaming reply produces, and any monotonic change drives the scroll.
+        return last.content.utf8.count + last.thinking.utf8.count
     }
 
     /// True for the assistant reply currently streaming (the last message while the
