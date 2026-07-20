@@ -1,5 +1,6 @@
 import SwiftUI
 import LlamaEngine
+import LlamaEngineStore
 import AppKit
 import UniformTypeIdentifiers
 
@@ -43,6 +44,8 @@ struct SettingsView: View {
     @State private var imageTestOK = false
 
     @AppStorage(SettingsKey.comfyTemplates) private var comfyTemplatesJSON = "[]"
+    @AppStorage(SettingsKey.sessionPresets) private var sessionPresetsJSON = "[]"
+    @AppStorage(SettingsKey.defaultPresetID) private var defaultPresetID = ""
     @State private var comfyImportStatus: String?
 
     @AppStorage(SettingsKey.ttsEngine) private var ttsEngine = TTSEngine.apple.rawValue
@@ -60,7 +63,7 @@ struct SettingsView: View {
     @State private var ttsTestStatus: String?
     @State private var ttsTestOK = false
 
-    @State private var configuringBackend: BackendKind = .ollama
+    @AppStorage("settings.configuringBackend") private var configuringBackendRaw = BackendKind.ollama.rawValue
     @State private var backendTesting = false
     @State private var backendTestStatus: String?
     @State private var backendTestOK = false
@@ -72,40 +75,70 @@ struct SettingsView: View {
     var body: some View {
         Form {
             backendsSection
-            Section("New Session Defaults") {
-                Picker("Backend", selection: $defaultBackend) {
-                    ForEach(configurableBackends) { kind in
-                        Text(kind.label).tag(kind.rawValue)
+            Section("New chats") {
+                Picker("Start from", selection: $defaultPresetID) {
+                    Text("App defaults").tag("")
+                    ForEach(sessionPresets) { Text($0.name).tag($0.id) }
+                }
+                if defaultPresetID.isEmpty {
+                    Picker("Backend", selection: $defaultBackend) {
+                        ForEach(configurableBackends) { kind in
+                            Text(kind.label).tag(kind.rawValue)
+                        }
+                    }
+                    if defaultBackendKind == .ollama {
+                        Picker("Model", selection: $defaultModel) {
+                            Text("None").tag("")
+                            ForEach(chatModels) { model in
+                                Text(model.name).tag(model.name)
+                            }
+                            if !defaultModel.isEmpty,
+                               !chatModels.contains(where: { $0.name == defaultModel }) {
+                                Text(defaultModel).tag(defaultModel)
+                            }
+                        }
+                        Picker("Context size", selection: $defaultContextSize) {
+                            ForEach(ContextSize.presets, id: \.self) { size in
+                                Text(ContextSize.label(size)).tag(size)
+                            }
+                        }
                     }
                 }
-                if defaultBackendKind == .ollama {
-                    Picker("Model", selection: $defaultModel) {
-                        Text("None").tag("")
-                        ForEach(chatModels) { model in
-                            Text(model.name).tag(model.name)
-                        }
-                        if !defaultModel.isEmpty,
-                           !chatModels.contains(where: { $0.name == defaultModel }) {
-                            Text(defaultModel).tag(defaultModel)
-                        }
-                    }
-                    Picker("Context size", selection: $defaultContextSize) {
-                        ForEach(ContextSize.presets, id: \.self) { size in
-                            Text(ContextSize.label(size)).tag(size)
-                        }
-                    }
-                }
-                Text("What a new conversation starts with. You can change any of it per session.")
+                Text(newChatsNote)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if !sessionPresets.isEmpty {
+                    ForEach(sessionPresets) { preset in
+                        HStack {
+                            Text(preset.name)
+                            if preset.id == defaultPresetID {
+                                Text("Default").font(.caption2)
+                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                    .background(.quaternary, in: Capsule())
+                            }
+                            Spacer()
+                            Button(role: .destructive) { deletePreset(preset) } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Delete this preset")
+                        }
+                    }
+                }
             }
             Section("Network") {
                 Picker("Request timeout", selection: $requestTimeout) {
                     Text("30 seconds").tag(30)
                     Text("60 seconds").tag(60)
-                    Text("120 seconds").tag(120)
-                    Text("300 seconds").tag(300)
+                    Text("2 minutes").tag(120)
+                    Text("5 minutes").tag(300)
+                    Text("10 minutes").tag(600)
+                    Text("20 minutes").tag(1200)
+                    Text("30 minutes").tag(1800)
+                    Text("1 hour").tag(3600)
                 }
+                Text("How long to wait for a server response before giving up. Raise it for slow local models, long reasoning, or image generation.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Web Search") {
                 Toggle("Enable web search", isOn: $webSearchEnabled)
@@ -284,6 +317,39 @@ struct SettingsView: View {
         BackendKind(rawValue: defaultBackend) ?? .ollama
     }
 
+    /// Which backend the Backends section is configuring. Backed by @AppStorage so it
+    /// persists across Settings opens instead of snapping back to Ollama every time.
+    private var configuringBackend: BackendKind {
+        BackendKind(rawValue: configuringBackendRaw) ?? .ollama
+    }
+
+    /// Caption under New chats, tailored to the chosen preset or default backend.
+    private var newChatsNote: String {
+        if let preset = SessionPresetLibrary.preset(id: defaultPresetID, in: sessionPresetsJSON) {
+            return "New chats start from the \u{201c}\(preset.name)\u{201d} preset. Change anything per chat in Session Settings."
+        }
+        switch defaultBackendKind {
+        case .llamaServer:
+            return "New chats use the llama.cpp server (its single model and context window come from the server). Change anything per chat, or save a chat's setup as a preset to reuse it."
+        case .appleIntelligence:
+            return "New chats use Apple Intelligence (on-device, one model). Change anything per chat, or save a chat's setup as a preset to reuse it."
+        default:
+            return "New chats begin with these values. Change anything per chat, or save a chat's setup as a preset (from Session Settings) to reuse it."
+        }
+    }
+
+    /// Saved session presets (decoded from the app-wide library).
+    private var sessionPresets: [SessionPreset] {
+        SessionPresetLibrary.decode(sessionPresetsJSON)
+    }
+
+    private func deletePreset(_ preset: SessionPreset) {
+        var presets = SessionPresetLibrary.decode(sessionPresetsJSON)
+        presets.removeAll { $0.id == preset.id }
+        sessionPresetsJSON = SessionPresetLibrary.encode(presets)
+        if defaultPresetID == preset.id { defaultPresetID = "" }
+    }
+
     private func backendURLBinding() -> Binding<String> {
         switch configuringBackend {
         case .llamaServer: return $llamaServerURL
@@ -292,7 +358,7 @@ struct SettingsView: View {
     }
 
     private var backendURLPlaceholder: String {
-        configuringBackend == .llamaServer ? "http://192.168.1.10:8080" : "http://localhost:11434"
+        configuringBackend == .llamaServer ? "http://localhost:8080" : "http://localhost:11434"
     }
 
     private var backendBlurb: String {
@@ -300,7 +366,7 @@ struct SettingsView: View {
         case .ollama:
             return "A local or networked Ollama server. Streams chat, lists and manages models, and provides embeddings for retrieval over attachments."
         case .llamaServer:
-            return "A llama.cpp llama-server (OpenAI-compatible API). Serves one model at a context window fixed at launch. For retrieval over attachments, start it with `--embeddings --pooling last`."
+            return "A llama.cpp llama-server (OpenAI-compatible API). Serves one model at a context window fixed at launch."
         case .appleIntelligence:
             return "Apple's on-device model. Nothing to configure — it runs entirely on this Mac when Apple Intelligence is enabled in System Settings."
         case .imageGeneration:
@@ -308,20 +374,32 @@ struct SettingsView: View {
         }
     }
 
+    /// A small "i" info icon with a hover tooltip, matching the session settings pattern.
+    private func infoButton(_ help: String) -> some View {
+        Image(systemName: "info.circle")
+            .foregroundStyle(.secondary)
+            .help(help)
+    }
+
     /// One "Backends" area: pick a backend, configure its connection, and test it. Only
     /// the controls that backend needs appear — driven by its capability profile.
     private var backendsSection: some View {
         let profile = configuringBackend.profile
         return Section("Backends") {
-            Picker("Backend", selection: $configuringBackend) {
+            Picker("Backend", selection: $configuringBackendRaw) {
                 ForEach(configurableBackends) { kind in
-                    Text(kind.label).tag(kind)
+                    Text(kind.label).tag(kind.rawValue)
                 }
             }
             if profile.needsServerURL {
-                TextField(backendURLPlaceholder, text: backendURLBinding())
-                    .textFieldStyle(.roundedBorder)
-                    .autocorrectionDisabled()
+                LabeledContent("Server") {
+                    HStack(spacing: 6) {
+                        TextField("", text: backendURLBinding(), prompt: Text(backendURLPlaceholder))
+                            .textFieldStyle(.roundedBorder)
+                            .autocorrectionDisabled()
+                        infoButton(backendBlurb)
+                    }
+                }
                 HStack(spacing: 8) {
                     Button("Test Connection") { Task { await runBackendTest() } }
                         .disabled(backendTesting || backendURLBinding().wrappedValue.isEmpty)
@@ -336,9 +414,9 @@ struct SettingsView: View {
                 Label(AppleIntelligence.statusMessage,
                       systemImage: AppleIntelligence.isAvailable ? "checkmark.seal" : "info.circle")
                     .font(.caption).foregroundStyle(.secondary)
-            }
-            if !backendBlurb.isEmpty {
-                Text(backendBlurb).font(.caption).foregroundStyle(.secondary)
+                if !backendBlurb.isEmpty {
+                    Text(backendBlurb).font(.caption).foregroundStyle(.secondary)
+                }
             }
             if profile.supportsModelManagement {
                 Button { showingModelManager = true } label: {

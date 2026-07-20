@@ -128,7 +128,10 @@ private struct CodeBlockView: View {
                     .font(.system(.body, design: .monospaced))
                     .textSelection(.enabled)
                     .padding(10)
-                    .fixedSize(horizontal: true, vertical: false)
+                    // Fix BOTH dimensions: horizontal so long lines scroll instead of
+                    // wrapping, vertical so the row keeps its full height. Leaving vertical
+                    // flexible lets a horizontal ScrollView collapse the block to one line.
+                    .fixedSize()
             }
         }
         .background(Color(nsColor: .textBackgroundColor))

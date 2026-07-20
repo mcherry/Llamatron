@@ -15,7 +15,6 @@ struct ChatView: View {
     @AppStorage(SettingsKey.serverURL) private var serverURL = SettingsDefault.serverURL
     @AppStorage(SettingsKey.llamaServerURL) private var llamaServerURL = SettingsDefault.llamaServerURL
     @AppStorage(SettingsKey.requestTimeout) private var requestTimeout = SettingsDefault.timeout
-    @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
     @AppStorage(SettingsKey.diagramGuidance) private var diagramGuidance = false
     @AppStorage(SettingsKey.rightSizeContext) private var rightSizeContext = SettingsDefault.rightSizeContext
     @AppStorage(SettingsKey.keepAliveMinutes) private var keepAliveMinutes = SettingsDefault.keepAliveMinutes
@@ -282,7 +281,19 @@ struct ChatView: View {
                 .padding()
             }
             .onChange(of: streamingTick) {
-                withAnimation(.easeOut(duration: 0.15)) {
+                // Pin to the bottom without animating: starting a fresh 0.15s scroll
+                // animation on every streamed token overlaps the previous one, which
+                // overshoots the bottom and looks jittery. An instant snap follows the
+                // stream smoothly.
+                proxy.scrollTo(bottomAnchor, anchor: .bottom)
+            }
+            .onChange(of: viewModel.isStreaming) { _, streaming in
+                // When the reply finishes, its final layout can be taller than the streamed
+                // text was (the caption appears, code blocks / tables / diagrams settle), so
+                // re-pin to the bottom on the next layout pass — otherwise the tail is left
+                // hidden below the fold.
+                guard !streaming else { return }
+                DispatchQueue.main.async {
                     proxy.scrollTo(bottomAnchor, anchor: .bottom)
                 }
             }
@@ -476,7 +487,6 @@ struct ChatView: View {
         viewModel.send(text: text,
                        session: session,
                        client: client,
-                       embeddingModel: embeddingModel,
                        diagramGuidance: diagramGuidance,
                        rightSizeContext: rightSizeContext,
                        keepAliveMinutes: keepAliveMinutes,

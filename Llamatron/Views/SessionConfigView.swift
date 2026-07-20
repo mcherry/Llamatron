@@ -21,7 +21,6 @@ struct SessionConfigView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \PromptPreset.name) private var presets: [PromptPreset]
     @State private var models: [OllamaModel] = []
-    @State private var embeddingModels: [OllamaModel] = []
     @State private var loading = false
     @State private var loadError: String?
     @State private var customContext = ""
@@ -30,6 +29,10 @@ struct SessionConfigView: View {
     @State private var newPresetName = ""
     /// The session model's trained context length (`/api/show`), for the cap warning.
     @State private var modelMaxContext: Int?
+    /// Whether the selected Ollama model reports the "thinking" capability (`/api/show`).
+    /// `nil` = unknown (llama.cpp or not reported) → keep the reasoning control visible;
+    /// `false` = the model can't reason → hide it.
+    @State private var modelSupportsThinking: Bool?
 
     // Local text mirrors of the optional numeric parameters, so typing ("0.") doesn't
     // get reformatted mid-edit. Committed to the session on change.
@@ -41,10 +44,13 @@ struct SessionConfigView: View {
     @State private var stopText = ""
     @State private var maxTokensText = ""
 
+    @AppStorage(SettingsKey.sessionPresets) private var sessionPresetsJSON = "[]"
+    @AppStorage("session.showAdvanced") private var showAdvanced = false
+    @State private var showingSaveSessionPreset = false
+    @State private var newSessionPresetName = ""
     @AppStorage(SettingsKey.imageGenEnabled) private var imageGenEnabled = false
     @AppStorage(SettingsKey.llamaServerURL) private var llamaServerURL = SettingsDefault.llamaServerURL
     @AppStorage(SettingsKey.ttsFeatureEnabled) private var ttsFeatureEnabled = SettingsDefault.ttsFeatureEnabled
-    @AppStorage(SettingsKey.embeddingModel) private var embeddingModel = SettingsDefault.embeddingModel
     @AppStorage(SettingsKey.imageServerURL) private var imageServerURL = SettingsDefault.imageServerURL
     @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
     @AppStorage(SettingsKey.comfyTemplates) private var comfyTemplatesJSON = "[]"
@@ -61,7 +67,10 @@ struct SessionConfigView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Session Settings").font(.headline)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Session Settings").font(.headline)
+                    Text("Applies to this chat only").font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
@@ -71,33 +80,51 @@ struct SessionConfigView: View {
             Divider()
 
             Form {
+                presetSection
                 backendSection
                 if profile.listsModels && profile.isChatBackend {
-                    modelSection
+                    if profile.modelSelectable {
+                        modelSection
+                    } else {
+                        fixedModelSection
+                    }
                 }
-                if profile.supportsVision {
-                    visionSection
-                }
-                if profile.contextWindowAdjustable {
-                    contextSection
-                } else if profile.isChatBackend && !profile.isOnDevice {
-                    fixedContextSection
-                }
-                if profile.supportsSampling {
-                    generationSection
-                }
-                if profile.isOnDevice {
-                    appleGenerationSection
+                if profile.isChatBackend {
+                    systemPromptSection
                 }
                 if profile.producesImages {
                     imageSection
                 }
-                if profile.isChatBackend {
-                    historySection
-                    contextStrategySection
-                    systemPromptSection
-                    if ttsFeatureEnabled {
-                        speechSection
+
+                Section {
+                    Toggle(isOn: $showAdvanced) {
+                        Label("Advanced settings", systemImage: "slider.horizontal.3")
+                    }
+                } footer: {
+                    Text("Generation, context window, history, retrieval\(profile.supportsVision ? ", vision" : "")\(ttsFeatureEnabled && profile.isChatBackend ? ", and speech" : "").")
+                }
+
+                if showAdvanced {
+                    if profile.supportsVision {
+                        visionSection
+                    }
+                    if profile.contextWindowAdjustable {
+                        contextSection
+                    } else if profile.isChatBackend && !profile.isOnDevice {
+                        fixedContextSection
+                    }
+                    if profile.supportsSampling {
+                        generationSection
+                    }
+                    if profile.isOnDevice {
+                        appleGenerationSection
+                    }
+                    if profile.isChatBackend {
+                        historySection
+                        contextStrategySection
+                        if ttsFeatureEnabled {
+                            speechSection
+                        }
                     }
                 }
             }
@@ -127,6 +154,75 @@ struct SessionConfigView: View {
     /// settings sections appear, so the UI never shows a control the backend can't use.
     private var profile: BackendProfile { session.backend.profile }
 
+    // MARK: - Presets
+
+    /// Saved session presets (decoded from the app-wide library).
+    private var sessionPresets: [SessionPreset] {
+        SessionPresetLibrary.decode(sessionPresetsJSON)
+    }
+
+    /// A sensible starting name when saving a preset.
+    private var suggestedPresetName: String {
+        session.modelName.isEmpty ? session.backend.label : session.modelName
+    }
+
+    private var presetSection: some View {
+        Section {
+            HStack {
+                Menu {
+                    if sessionPresets.isEmpty {
+                        Text("No saved presets")
+                    } else {
+                        ForEach(sessionPresets) { preset in
+                            Button(preset.name) { applyPreset(preset) }
+                        }
+                    }
+                } label: {
+                    Label("Apply Preset", systemImage: "square.stack.3d.up")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+
+                Spacer()
+
+                Button {
+                    newSessionPresetName = suggestedPresetName
+                    showingSaveSessionPreset = true
+                } label: {
+                    Label("Save as Preset", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+            }
+        } header: {
+            Text("Preset")
+        } footer: {
+            Text("Save this chat's setup to reuse it, or apply a saved one. Choose the default for new chats in Settings \u{203a} New chats.")
+        }
+        .alert("Save Preset", isPresented: $showingSaveSessionPreset) {
+            TextField("Name", text: $newSessionPresetName)
+            Button("Save", action: saveSessionPreset)
+                .disabled(newSessionPresetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Saves this chat's backend, model, system prompt, and generation settings as a reusable preset.")
+        }
+    }
+
+    private func applyPreset(_ preset: SessionPreset) {
+        session.apply(preset.config)
+        loadParameterFields()
+    }
+
+    private func saveSessionPreset() {
+        let name = newSessionPresetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        var presets = SessionPresetLibrary.decode(sessionPresetsJSON)
+        presets.append(SessionPreset(name: name, config: session.configSnapshot()))
+        sessionPresetsJSON = SessionPresetLibrary.encode(presets)
+        newSessionPresetName = ""
+    }
+
     private var backendSection: some View {
         Section("Backend") {
             Picker("Engine", selection: $session.backend) {
@@ -143,7 +239,7 @@ struct SessionConfigView: View {
             }
 
             if session.backend == .llamaServer {
-                Text("Talks to a llama.cpp llama-server at \(llamaServerURL) (OpenAI-compatible API). Change the address in Settings.")
+                Text("Uses the llama.cpp server configured in Settings (OpenAI-compatible API).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -204,6 +300,29 @@ struct SessionConfigView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
+        }
+    }
+
+    /// Read-only model display for server backends that serve a single fixed model
+    /// (llama.cpp): the app auto-selects the loaded model rather than offering a picker.
+    private var fixedModelSection: some View {
+        Section("Model") {
+            if !session.modelName.isEmpty {
+                LabeledContent("Model", value: session.modelName)
+            } else if loading {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading model…").font(.caption).foregroundStyle(.secondary)
+                }
+            } else if let loadError {
+                Label(loadError, systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.red)
+            } else {
+                Text("Connect to the server in Settings to load its model.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Text("The llama.cpp server serves one model, loaded at launch — there's nothing to pick here.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -273,13 +392,13 @@ struct SessionConfigView: View {
 
     private var generationSection: some View {
         Section("Generation") {
-            if profile.supportsReasoning {
+            if profile.supportsReasoning && modelSupportsThinking != false {
                 Picker("Reasoning", selection: $session.reasoningMode) {
                     ForEach(ReasoningMode.allCases) { mode in
                         Text(mode.label).tag(mode)
                     }
                 }
-                Text("Reasoning models (deepseek-r1, qwen3, gpt-oss) show their thinking in a collapsible section. Automatic uses the model's default; turn it Off to minimize it. Forcing it On asks for more (errors on Ollama models that don't support thinking).")
+                Text(reasoningHelpText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -326,6 +445,16 @@ struct SessionConfigView: View {
 
             Button("Reset to Defaults", action: clearGenerationParameters)
                 .disabled(session.generationParameters.isEmpty && session.maxResponseTokens == nil)
+        }
+    }
+
+    /// Backend-aware explanation of the Reasoning control so it's clear when it applies.
+    private var reasoningHelpText: String {
+        switch session.backend {
+        case .llamaServer:
+            return "For reasoning models (e.g. gpt-oss), the server streams the model's thinking into a collapsible section. Automatic uses the model's default; On asks for more reasoning, Off minimizes it."
+        default:
+            return "This model can think, and its reasoning shows in a collapsible section. Automatic uses the model's default; On asks for more, Off minimizes it. (This control only appears for models that support reasoning.)"
         }
     }
 
@@ -606,15 +735,6 @@ struct SessionConfigView: View {
         }
     }
 
-    /// Embedding-model names for the retrieval picker, always including the current
-    /// selection and the default so the value is never orphaned.
-    private var embeddingChoices: [String] {
-        var names = Set(embeddingModels.map(\.name))
-        names.insert(SettingsDefault.embeddingModel)
-        names.insert(embeddingModel)
-        return names.sorted()
-    }
-
     private var contextStrategySection: some View {
         Section("Attached Files") {
             Picker("Strategy", selection: $session.contextMode) {
@@ -629,12 +749,7 @@ struct SessionConfigView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if profile.supportsRetrieval {
-                Picker("Embedding model", selection: $embeddingModel) {
-                    ForEach(embeddingChoices, id: \.self) { name in
-                        Text(name).tag(name)
-                    }
-                }
-                Text("Finds the most relevant excerpts of attached files (retrieval). App-wide; pick one available on your server.")
+                Text("Retrieval finds the most relevant excerpts of large attachments using on-device embeddings (Apple's Natural Language framework) — no server or model to set up.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -738,6 +853,7 @@ struct SessionConfigView: View {
     /// the chosen size exceeds it.
     private func loadModelContext() async {
         modelMaxContext = nil
+        modelSupportsThinking = nil
         guard session.backend == .ollama || session.backend == .llamaServer,
               !session.modelName.isEmpty,
               let client = serverBackend() else { return }
@@ -747,6 +863,17 @@ struct SessionConfigView: View {
         // context size so budgeting uses the real window (the user can't set it).
         if session.backend == .llamaServer, let discovered, discovered > 0 {
             session.contextSize = discovered
+        }
+        // Only Ollama reports per-model capabilities. Empty means "unknown" (keep the
+        // reasoning control visible); a non-empty set without "thinking" means the model
+        // can't reason, so hide the control — and clear a stale forced-On that would error.
+        if session.backend == .ollama {
+            let caps = (try? await client.modelCapabilities(session.modelName)) ?? []
+            let known = caps.isEmpty ? nil : caps.contains("thinking")
+            modelSupportsThinking = known
+            if known == false, session.reasoningMode == .on {
+                session.reasoningMode = .auto
+            }
         }
     }
 
@@ -806,13 +933,17 @@ struct SessionConfigView: View {
             models = all
                 .filter { !$0.isEmbeddingModel }
                 .sorted { $0.name < $1.name }
-            embeddingModels = all
-                .filter { $0.isEmbeddingModel }
-                .sorted { $0.name < $1.name }
-            // llama.cpp serves a single loaded model; auto-select it so budgeting and
-            // token calibration key on the right name.
-            if session.backend == .llamaServer, session.modelName.isEmpty, let first = models.first {
-                session.modelName = first.name
+            // Drop a selection that isn't valid for this backend (e.g. a leftover Ollama
+            // model after switching to llama.cpp) so the picker never shows a phantom model.
+            // llama.cpp serves one model, so adopt it; Ollama prompts for a fresh pick.
+            let known = Set(models.map(\.name))
+            let stale = !session.modelName.isEmpty && !known.contains(session.modelName)
+            if session.backend == .llamaServer {
+                if stale || session.modelName.isEmpty, let first = models.first {
+                    session.modelName = first.name
+                }
+            } else if stale {
+                session.modelName = ""
             }
         } catch {
             loadError = error.localizedDescription

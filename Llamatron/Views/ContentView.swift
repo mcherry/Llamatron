@@ -10,6 +10,8 @@ struct ContentView: View {
     @AppStorage(SettingsKey.defaultContextSize) private var defaultContextSize = SettingsDefault.contextSize
     @AppStorage(SettingsKey.defaultModel) private var defaultModel = ""
     @AppStorage(SettingsKey.defaultBackend) private var defaultBackend = SettingsDefault.defaultBackend
+    @AppStorage(SettingsKey.sessionPresets) private var sessionPresetsJSON = "[]"
+    @AppStorage(SettingsKey.defaultPresetID) private var defaultPresetID = ""
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \ChatSession.updatedAt, order: .reverse) private var sessions: [ChatSession]
@@ -24,6 +26,9 @@ struct ContentView: View {
                         sessionPendingDelete = session
                     }
                     .contextMenu {
+                        Button("New Chat Like This", systemImage: "plus.square.on.square") {
+                            newSessionLike(session)
+                        }
                         Button("Delete", role: .destructive) {
                             sessionPendingDelete = session
                         }
@@ -72,8 +77,32 @@ struct ContentView: View {
     }
 
     private func newSession() {
-        let session = ChatSession(modelName: defaultModel, contextSize: defaultContextSize)
-        session.backend = BackendKind(rawValue: defaultBackend) ?? .ollama
+        let session = makeSession()
+        modelContext.insert(session)
+        selectedID = session.id
+    }
+
+    /// Builds a new session from the default preset when one is chosen, otherwise from the
+    /// App-default backend/model/context. Only Ollama uses a preset default model; llama.cpp
+    /// auto-selects its single loaded model and Apple has none.
+    private func makeSession() -> ChatSession {
+        let session = ChatSession()
+        if let preset = SessionPresetLibrary.preset(id: defaultPresetID, in: sessionPresetsJSON) {
+            session.apply(preset.config)
+        } else {
+            let backend = BackendKind(rawValue: defaultBackend) ?? .ollama
+            session.backend = backend
+            session.modelName = backend == .ollama ? defaultModel : ""
+            session.contextSize = defaultContextSize
+        }
+        return session
+    }
+
+    /// Creates a new session that copies an existing session's configuration (“new chat
+    /// like this”) — same backend, model, prompt, and generation settings, empty transcript.
+    private func newSessionLike(_ source: ChatSession) {
+        let session = ChatSession()
+        session.apply(source.configSnapshot())
         modelContext.insert(session)
         selectedID = session.id
     }

@@ -15,7 +15,6 @@ enum SettingsKey {
     static let requestTimeout = "requestTimeout"
     static let didCompleteFirstRun = "didCompleteFirstRun"
     static let composerHeight = "composerHeight"
-    static let embeddingModel = "embeddingModel"
     static let diagramGuidance = "diagramGuidance"
     /// Right-size `num_ctx` to each request instead of always sending the full window.
     static let rightSizeContext = "rightSizeContext"
@@ -45,6 +44,10 @@ enum SettingsKey {
     static let imageNegativePrompt = "imageNegativePrompt"
     /// The ComfyUI workflow-template library, stored as JSON (see `ComfyTemplateLibrary`).
     static let comfyTemplates = "comfyTemplates"
+    /// Saved session presets (full per-chat configurations), JSON-encoded.
+    static let sessionPresets = "sessionPresets"
+    /// The id of the preset new chats start from; empty = the App defaults below.
+    static let defaultPresetID = "defaultPresetID"
 
     // Text-to-speech (app-level engine config; per-chat enable/engine live on ChatSession).
     static let ttsEngine = "ttsEngine"
@@ -65,12 +68,11 @@ enum SettingsKey {
 /// Default values for the settings above.
 enum SettingsDefault {
     static let serverURL = "http://localhost:11434"
-    static let llamaServerURL = "http://192.168.1.10:8080"
+    static let llamaServerURL = "http://localhost:8080"
     static let defaultBackend = BackendKind.ollama.rawValue
     static let contextSize = 32768
     static let timeout = 120
     static let composerHeight = 72.0
-    static let embeddingModel = "nomic-embed-text"
     static let rightSizeContext = true
     static let keepAliveMinutes = 5
     static let ttsFeatureEnabled = true
@@ -109,5 +111,31 @@ enum ComfyTemplateLibrary {
     static func template(id: String, in json: String) -> ComfyWorkflowTemplate? {
         guard !id.isEmpty else { return nil }
         return decode(json).first { $0.id.uuidString == id }
+    }
+}
+
+/// The app-side library of session presets (full per-chat configurations), persisted as a
+/// JSON string in `@AppStorage(SettingsKey.sessionPresets)`. Mirrors `ComfyTemplateLibrary`;
+/// the `SessionPreset` / `SessionConfig` value types live in the engine store.
+enum SessionPresetLibrary {
+    /// Decodes the stored library JSON, tolerating an empty or damaged value (→ `[]`).
+    static func decode(_ json: String) -> [SessionPreset] {
+        guard let data = json.data(using: .utf8),
+              let presets = try? JSONDecoder().decode([SessionPreset].self, from: data)
+        else { return [] }
+        return presets
+    }
+
+    /// Encodes a library to a JSON string suitable for `@AppStorage`.
+    static func encode(_ presets: [SessionPreset]) -> String {
+        guard let data = try? JSONEncoder().encode(presets),
+              let json = String(data: data, encoding: .utf8) else { return "[]" }
+        return json
+    }
+
+    /// The preset whose id matches `id`, from a stored library JSON.
+    static func preset(id: String, in json: String) -> SessionPreset? {
+        guard !id.isEmpty else { return nil }
+        return decode(json).first { $0.id == id }
     }
 }
