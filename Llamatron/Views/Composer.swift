@@ -11,6 +11,8 @@ struct Composer: View {
     let onSend: () -> Void
     let onStop: () -> Void
     var onAttach: (() -> Void)?
+    /// When set, an "Attach Folder…" item indexes a whole directory as one source.
+    var onAttachFolder: (() -> Void)?
     var onAddWebSource: (() -> Void)?
     var onWebSearch: (() -> Void)?
     /// When set, a mic button toggles speech-to-text dictation into the field.
@@ -105,7 +107,7 @@ struct Composer: View {
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
 
             HStack(alignment: .bottom) {
-                if onAttach != nil {
+                if onAttach != nil || onAttachFolder != nil {
                     attachButton
                 }
                 if onAddWebSource != nil || onWebSearch != nil {
@@ -125,15 +127,30 @@ struct Composer: View {
     }
 
     private var attachButton: some View {
-        Button {
-            onAttach?()
+        Menu {
+            if let onAttach {
+                Button {
+                    onAttach()
+                } label: {
+                    Label("Attach Files…", systemImage: "doc")
+                }
+            }
+            if let onAttachFolder {
+                Button {
+                    onAttachFolder()
+                } label: {
+                    Label("Attach Folder…", systemImage: "folder")
+                }
+            }
         } label: {
             Image(systemName: "paperclip")
                 .font(.title3)
                 .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
-        .help("Attach a file for context")
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Attach files or a folder for context")
     }
 
     private var webButton: some View {

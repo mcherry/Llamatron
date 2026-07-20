@@ -47,10 +47,7 @@ struct StatusBarView: View {
             }
 
             if isStreaming {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("Generating…")
-                }
+                Text("Generating…")
             } else if let speed = lastAssistant?.tokensPerSecond {
                 stat("speedometer", String(format: "%.1f tok/s", speed),
                      help: "Generation speed of the last reply")

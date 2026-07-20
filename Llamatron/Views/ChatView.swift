@@ -46,6 +46,7 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var showingConfig = false
     @State private var showingImporter = false
+    @State private var showingFolderImporter = false
     @State private var showingAddWebSource = false
     @State private var showingWebSearch = false
     @State private var showingResetConfirm = false
@@ -55,6 +56,9 @@ struct ChatView: View {
     @State private var showingExporter = false
     /// 0...1 while a large attachment is being chunked/indexed; nil when idle.
     @State private var indexingProgress: Double?
+    /// Human-readable status shown in the indexing bar (e.g. per-file progress for a
+    /// directory source); nil falls back to a generic percentage.
+    @State private var indexingLabel: String?
     @FocusState private var titleFocused: Bool
 
     private let bottomAnchor = "bottom-anchor"
@@ -110,6 +114,11 @@ struct ChatView: View {
                       allowedContentTypes: AttachmentLoader.importTypes,
                       allowsMultipleSelection: true) { result in
             handleImport(result)
+        }
+        .fileImporter(isPresented: $showingFolderImporter,
+                      allowedContentTypes: [.folder],
+                      allowsMultipleSelection: false) { result in
+            handleFolderImport(result)
         }
         .dropDestination(for: URL.self) { urls, _ in
             importURLs(urls)
@@ -182,6 +191,7 @@ struct ChatView: View {
                  onSend: send,
                  onStop: viewModel.stop,
                  onAttach: { showingImporter = true },
+                 onAttachFolder: { showingFolderImporter = true },
                  onAddWebSource: webSearchEnabled ? { showingAddWebSource = true } : nil,
                  onWebSearch: webSearchEnabled ? { showingWebSearch = true } : nil,
                  onMic: conversationActive ? nil : micAction,
@@ -393,7 +403,15 @@ struct ChatView: View {
 
     private func activityBar(_ status: String) -> some View {
         HStack(spacing: 8) {
-            ProgressView().controlSize(.small)
+            Image(systemName: "stopwatch")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let started = viewModel.generationStartedAt {
+                Text(timerInterval: started...Date.distantFuture, countsDown: false, showsHours: false)
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
             Text(status)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -452,6 +470,9 @@ struct ChatView: View {
                     .scaledToFill()
                     .frame(width: 28, height: 28)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else if attachment.isDirectory {
+                Image(systemName: "folder")
+                    .font(.caption2)
             } else {
                 Image(systemName: "doc.text")
                     .font(.caption2)
@@ -460,7 +481,9 @@ struct ChatView: View {
                 Text(attachment.fileName)
                     .font(.caption)
                     .lineLimit(1)
-                Text(attachment.isImage ? "image" : "~\(attachment.tokenEstimate.formatted()) tokens")
+                Text(attachment.isImage ? "image"
+                     : attachment.isDirectory ? "\(attachment.fileCount) files · ~\(attachment.tokenEstimate.formatted()) tokens"
+                     : "~\(attachment.tokenEstimate.formatted()) tokens")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -743,10 +766,39 @@ struct ChatView: View {
         }
     }
 
+    private func handleFolderImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            if let url = urls.first { indexDirectory(url) }
+        case .failure(let error):
+            viewModel.errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Indexes a whole folder as one retrievable source. The walk/chunk work runs off the
+    /// main actor inside `AttachmentLoader`; here we just drive the progress bar and surface
+    /// per-file status so a large repo doesn't look like a frozen spinner.
+    private func indexDirectory(_ url: URL) {
+        Task { @MainActor in
+            indexingProgress = 0
+            indexingLabel = "Scanning…"
+            defer { indexingProgress = nil; indexingLabel = nil }
+            do {
+                try await AttachmentLoader.indexDirectory(at: url, into: session,
+                                                          modelContext: modelContext) { label, progress in
+                    indexingLabel = label.isEmpty ? nil : label
+                    indexingProgress = progress
+                }
+                session.updatedAt = .now
+            } catch {
+                viewModel.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     /// Stores a fetched web page or pasted note as a retrievable text attachment, so it
     /// rides the existing retrieval pipeline like any other attached file.
-    private func addWebSource(title: String, content: String) {
-        Task { @MainActor in
+    private func addWebSource(title: String, content: String) {        Task { @MainActor in
             indexingProgress = 0
             defer { indexingProgress = nil }
             await AttachmentLoader.makeTextAttachment(name: title.isEmpty ? "Source" : title,
@@ -762,8 +814,9 @@ struct ChatView: View {
         HStack(spacing: 8) {
             ProgressView(value: progress)
                 .progressViewStyle(.linear)
-            Text("Indexing… \(Int(progress * 100))%")
+            Text(indexingLabel ?? "Indexing… \(Int(progress * 100))%")
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                .lineLimit(1)
         }
         .padding(.horizontal, 16).padding(.vertical, 4)
     }
