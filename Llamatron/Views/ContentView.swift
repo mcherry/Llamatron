@@ -17,6 +17,8 @@ struct ContentView: View {
     @Query(sort: \ChatSession.updatedAt, order: .reverse) private var sessions: [ChatSession]
     @State private var selectedID: ChatSession.ID?
     @State private var sessionPendingDelete: ChatSession?
+    /// iOS presents Settings as a sheet (there's no macOS-style Settings scene).
+    @State private var showingSettings = false
 
     var body: some View {
         NavigationSplitView {
@@ -39,10 +41,19 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 240, ideal: 300, max: 420)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
+                    #if os(macOS)
                     SettingsLink {
                         Label("Settings", systemImage: "gearshape")
                     }
                     .help("Program Settings")
+                    #else
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                    .help("Program Settings")
+                    #endif
 
                     Button(action: newSession) {
                         Label("New Session", systemImage: "square.and.pencil")
@@ -74,6 +85,20 @@ struct ContentView: View {
             FirstRunView()
                 .interactiveDismissDisabled()
         }
+        #if os(iOS)
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack {
+                SettingsView()
+                    .navigationTitle("Settings")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showingSettings = false }
+                        }
+                    }
+            }
+        }
+        #endif
     }
 
     private func newSession() {
@@ -124,7 +149,7 @@ struct ContentView: View {
 private struct SessionRow: View {
     let session: ChatSession
     var onDelete: () -> Void
-    @State private var hovering = false
+    @State private var hovering = alwaysRevealControls
 
     /// Backend-aware subtitle: the chosen Ollama model, or the engine name for
     /// Apple Intelligence (which has a single on-device model, so no picker).

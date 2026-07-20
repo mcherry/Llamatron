@@ -4,7 +4,11 @@ import LlamaEngine
 import SwiftData
 import UniformTypeIdentifiers
 import UniformTypeIdentifiers
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 
 /// The chat detail pane: a header strip with the session's model/context, the
 /// streaming transcript, attachment chips, an inline error banner, and the composer.
@@ -464,8 +468,8 @@ struct ChatView: View {
     private func attachmentChip(_ attachment: Attachment) -> some View {
         HStack(spacing: 5) {
             if attachment.isImage, let data = attachment.imageData,
-               let nsImage = NSImage(data: data) {
-                Image(nsImage: nsImage)
+               let nsImage = PlatformImage(data: data) {
+                Image(platformImage: nsImage)
                     .resizable()
                     .scaledToFill()
                     .frame(width: 28, height: 28)
@@ -650,11 +654,19 @@ struct ChatView: View {
     }
 
     private func saveAudio(_ message: ChatMessage) {
+        #if os(macOS)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "m4a") ?? .audio]
         panel.nameFieldStringValue = "reply.m4a"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         speech.saveAudio(messageID: message.id, text: message.content, config: ttsConfig, to: url)
+        #else
+        // iOS: synthesize to a temp file, then offer it through the share sheet.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("reply.m4a")
+        speech.saveAudio(messageID: message.id, text: message.content, config: ttsConfig, to: url) { succeeded in
+            if succeeded { PlatformShare.present([url]) }
+        }
+        #endif
     }
 
     private enum ExportFormat { case markdown, json }

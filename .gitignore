@@ -6,6 +6,7 @@ xcuserdata/
 
 # XcodeGen output (regenerate from project.yml)
 Llamatron.xcodeproj/
+Llamatron/Info-iOS.plist
 
 # macOS
 .DS_Store

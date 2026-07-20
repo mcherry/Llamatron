@@ -1,5 +1,7 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
 
 /// Multiline input with an embedded send/stop button in the bottom-right corner and
 /// a draggable top edge to resize its height (persisted across launches). Return
@@ -67,7 +69,9 @@ struct Composer: View {
         .onHover { inside in
             // `.set()` (not push/pop) so repeated hover callbacks during a resize
             // can't imbalance the cursor stack and make it flicker.
+            #if os(macOS)
             if inside { NSCursor.resizeUpDown.set() } else { NSCursor.arrow.set() }
+            #endif
         }
         .gesture(
             // Measure in global space: the handle moves as the composer resizes, so

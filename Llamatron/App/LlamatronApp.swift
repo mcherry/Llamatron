@@ -26,8 +26,10 @@ struct LlamatronApp: App {
         }
         .modelContainer(container)
 
+        #if os(macOS)
         Settings {
             SettingsView()
         }
+        #endif
     }
 }

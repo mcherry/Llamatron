@@ -100,7 +100,7 @@ struct MarkdownView: View {
 private struct CodeBlockView: View {
     let language: String?
     let code: String
-    @State private var hovering = false
+    @State private var hovering = alwaysRevealControls
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -134,11 +134,11 @@ private struct CodeBlockView: View {
                     .fixedSize()
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color.platformTextBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color(nsColor: .separatorColor))
+                .strokeBorder(Color.platformSeparator)
         )
         .onHover { hovering = $0 }
     }
@@ -160,10 +160,10 @@ private struct CodeBlockView: View {
     private static func color(for kind: SyntaxHighlighter.Kind) -> Color? {
         switch kind {
         case .plain: return nil
-        case .keyword: return Color(nsColor: .systemPurple)
-        case .string: return Color(nsColor: .systemRed)
-        case .comment: return Color(nsColor: .systemGreen)
-        case .number: return Color(nsColor: .systemBlue)
+        case .keyword: return Color.codeKeyword
+        case .string: return Color.codeString
+        case .comment: return Color.codeComment
+        case .number: return Color.codeNumber
         }
     }
 }
@@ -192,7 +192,7 @@ private struct MarkdownTableView: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color(nsColor: .separatorColor))
+                .strokeBorder(Color.platformSeparator)
         )
     }
 
@@ -212,12 +212,12 @@ private struct MarkdownTableView: View {
             // rectangle would draw on shared edges.
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(Color(nsColor: .separatorColor))
+                    .fill(Color.platformSeparator)
                     .frame(height: 0.5)
             }
             .overlay(alignment: .trailing) {
                 Rectangle()
-                    .fill(Color(nsColor: .separatorColor))
+                    .fill(Color.platformSeparator)
                     .frame(width: 0.5)
             }
     }

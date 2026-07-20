@@ -1,7 +1,9 @@
 import SwiftUI
 import LlamaEngine
 import LlamaEngineStore
+#if os(macOS)
 import AppKit
+#endif
 import UniformTypeIdentifiers
 
 /// App-wide settings (Cmd-,). Server address plus defaults applied to new sessions.
@@ -534,11 +536,25 @@ struct SettingsView: View {
 
     /// Opens an API-format workflow file, auto-binds it to a template, and adds it to the library.
     private func importComfyTemplate() {
+        #if os(macOS)
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         panel.message = "Choose a ComfyUI workflow saved in API format."
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        applyComfyWorkflow(from: url)
+        #else
+        PlatformOpen.pick([.json]) { url in
+            guard let url else { return }
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+            applyComfyWorkflow(from: url)
+        }
+        #endif
+    }
+
+    /// Reads a ComfyUI workflow file, auto-binds it to a template, and adds it to the library.
+    private func applyComfyWorkflow(from url: URL) {
         do {
             let data = try Data(contentsOf: url)
             let name = url.deletingPathExtension().lastPathComponent

@@ -1,6 +1,10 @@
 import SwiftUI
 import LlamaEngineStore
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import UniformTypeIdentifiers
 
 /// One turn in the transcript. User turns are right-aligned and hug their content;
@@ -24,7 +28,7 @@ struct MessageRow: View {
     /// When set, only the first N characters of the reply are shown — used to reveal a
     /// narrated reply in step with its audio. `nil` shows the whole reply.
     var revealedCharacters: Int?
-    @State private var hovering = false
+    @State private var hovering = alwaysRevealControls
     @State private var thinkingExpanded = false
     @State private var showingInspector = false
 
@@ -162,7 +166,7 @@ struct MessageRow: View {
                 if !message.thinking.isEmpty {
                     thinkingDisclosure
                 }
-                if let data = message.generatedImageData, let nsImage = NSImage(data: data) {
+                if let data = message.generatedImageData, let nsImage = PlatformImage(data: data) {
                     generatedImage(nsImage)
                 }
                 if isHoldingForNarration {
@@ -280,9 +284,9 @@ struct MessageRow: View {
     }
 
     /// A generated image reply with hover actions to save or copy it.
-    private func generatedImage(_ nsImage: NSImage) -> some View {
+    private func generatedImage(_ nsImage: PlatformImage) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Image(nsImage: nsImage)
+            Image(platformImage: nsImage)
                 .resizable()
                 .scaledToFit()
                 .frame(maxWidth: 512, maxHeight: 512)
@@ -305,12 +309,20 @@ struct MessageRow: View {
     /// Writes the generated PNG to a user-chosen location.
     private func saveGeneratedImage() {
         guard let data = message.generatedImageData else { return }
+        #if os(macOS)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType.png]
         panel.nameFieldStringValue = "image.png"
         if panel.runModal() == .OK, let url = panel.url {
             try? data.write(to: url)
         }
+        #else
+        // iOS: write a temp PNG and offer it through the share sheet.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("image.png")
+        if (try? data.write(to: url)) != nil {
+            PlatformShare.present([url])
+        }
+        #endif
     }
 
     private var captionText: String {

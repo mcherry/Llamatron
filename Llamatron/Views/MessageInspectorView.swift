@@ -220,10 +220,10 @@ struct MessageInspectorView: View {
                     .padding(8)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .textBackgroundColor),
+            .background(Color.platformTextBackground,
                         in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color(nsColor: .separatorColor)))
+                .strokeBorder(Color.platformSeparator))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

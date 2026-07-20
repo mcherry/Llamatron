@@ -21,7 +21,7 @@ struct MermaidView: View {
     @State private var failed = false
     @State private var errorText: String?
     @State private var autoCorrected = false
-    @State private var hovering = false
+    @State private var hovering = alwaysRevealControls
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -58,11 +58,11 @@ struct MermaidView: View {
                     .padding(8)
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color.platformTextBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color(nsColor: .separatorColor))
+                .strokeBorder(Color.platformSeparator)
         )
         .onHover { hovering = $0 }
     }
@@ -131,6 +131,7 @@ struct MermaidView: View {
     }
 }
 
+#if os(macOS)
 /// A `WKWebView` that does not consume scroll-wheel events. The diagram is sized to fit
 /// its content, so the web view never needs to scroll itself; forwarding the event to
 /// the next responder lets the enclosing chat transcript scroll normally even when the
@@ -140,10 +141,11 @@ private final class PassthroughScrollWebView: WKWebView {
         nextResponder?.scrollWheel(with: event)
     }
 }
+#endif
 
 /// The sandboxed WebKit host that actually renders the diagram. Kept private to
 /// `MermaidView`; all the security configuration lives here.
-private struct MermaidWebView: NSViewRepresentable {
+private struct MermaidWebView: PlatformViewRepresentable {
     let source: String
     let repaired: String
     let dark: Bool
@@ -157,10 +159,28 @@ private struct MermaidWebView: NSViewRepresentable {
                     errorText: $errorText, autoCorrected: $autoCorrected)
     }
 
-    func makeNSView(context: Context) -> WKWebView {
+    #if os(macOS)
+    func makeNSView(context: Context) -> WKWebView { makeWebView(context.coordinator) }
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        context.coordinator.webView = webView
+        context.coordinator.reloadIfNeeded(source: source, repaired: repaired, dark: dark)
+    }
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) { teardown(webView) }
+    #else
+    func makeUIView(context: Context) -> WKWebView { makeWebView(context.coordinator) }
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.webView = webView
+        context.coordinator.reloadIfNeeded(source: source, repaired: repaired, dark: dark)
+    }
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) { teardown(webView) }
+    #endif
+
+    /// Builds the locked-down web view. Shared across platforms; only transparency and
+    /// scroll-passthrough differ.
+    private func makeWebView(_ coordinator: Coordinator) -> WKWebView {
         let controller = WKUserContentController()
-        controller.add(context.coordinator, name: "sizing")
-        controller.add(context.coordinator, name: "failed")
+        controller.add(coordinator, name: "sizing")
+        controller.add(coordinator, name: "failed")
 
         let config = WKWebViewConfiguration()
         config.userContentController = controller
@@ -168,21 +188,25 @@ private struct MermaidWebView: NSViewRepresentable {
         config.websiteDataStore = .nonPersistent()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
 
+        #if os(macOS)
         let webView = PassthroughScrollWebView(frame: .zero, configuration: config)
-        webView.navigationDelegate = context.coordinator
         // Transparent so the SwiftUI card background shows through behind the diagram.
         webView.setValue(false, forKey: "drawsBackground")
-        context.coordinator.webView = webView
-        context.coordinator.load(source: source, repaired: repaired, dark: dark)
+        #else
+        let webView = WKWebView(frame: .zero, configuration: config)
+        // Transparent, and let the enclosing transcript own scrolling.
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+        #endif
+        webView.navigationDelegate = coordinator
+        coordinator.webView = webView
+        coordinator.load(source: source, repaired: repaired, dark: dark)
         return webView
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {
-        context.coordinator.webView = webView
-        context.coordinator.reloadIfNeeded(source: source, repaired: repaired, dark: dark)
-    }
-
-    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+    private static func teardown(_ webView: WKWebView) {
         webView.stopLoading()
         webView.configuration.userContentController.removeAllScriptMessageHandlers()
         webView.navigationDelegate = nil
