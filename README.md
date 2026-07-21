@@ -52,7 +52,13 @@ ComfyUI — so you can run, compare, and **inspect** models from one SwiftUI app
   background indexing and live progress.
 
 **Web**
-- **Web search** from the composer — Wikipedia, SearXNG, Marginalia, Brave, or Tavily.
+- **Web search** from the composer across eight sources — Wikipedia, SearXNG, Marginalia,
+  Brave, Tavily, Exa, Linkup, and TinyFish — configured in a curated **provider manager**
+  (API keys, live readiness, and signup/docs links).
+- **Meta-search** queries several engines at once, de-duplicates by URL, and re-ranks by
+  consensus (Reciprocal Rank Fusion), with **Comprehensive / Fast / Resilient** modes. It
+  honours each provider's rate limits (respecting `Retry-After`, backing off on quota),
+  flags which engines were skipped and why, and tracks monthly per-provider usage.
 - Add a fetched web page or pasted text as a retrievable source (robots.txt-respecting).
 
 **Vision & multimodal**
@@ -170,7 +176,7 @@ xcodebuild -scheme Llamatron -destination 'platform=macOS' test
 The app's own tests are lightweight integration checks; the bulk of the pure logic —
 stream parsing, token budgeting, the context-strategy planner, chunking, vector
 similarity, retrieval, history management, request encoding, export, Markdown/Mermaid, and
-syntax highlighting — is covered by the LlamaEngine package's hermetic suite (300+ tests,
+syntax highlighting — is covered by the LlamaEngine package's hermetic suite (380+ tests,
 no network).
 
 ## License
