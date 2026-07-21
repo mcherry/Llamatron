@@ -18,6 +18,9 @@ struct AddWebSourceView: View {
     @State private var pastedText = ""
     @State private var isFetching = false
     @State private var errorMessage: String?
+    @FocusState private var focusedField: Field?
+
+    private enum Field { case url, title, text }
 
     private enum Mode: String, CaseIterable, Identifiable {
         case web, text
@@ -49,6 +52,12 @@ struct AddWebSourceView: View {
             footer
         }
         .frame(width: 540, height: 480)
+        .onAppear {
+            DispatchQueue.main.async { focusedField = mode == .web ? .url : .text }
+        }
+        .onChange(of: mode) { _, newMode in
+            focusedField = newMode == .web ? .url : .text
+        }
     }
 
     private var header: some View {
@@ -66,6 +75,7 @@ struct AddWebSourceView: View {
             TextField("https://example.com/article", text: $urlText, onCommit: fetch)
                 .textFieldStyle(.roundedBorder)
                 .disableAutocorrection(true)
+                .focused($focusedField, equals: .url)
             Text("The page is fetched once and reduced to plain text. Its content is treated as untrusted reference material — never as instructions.")
                 .font(.caption2).foregroundStyle(.tertiary)
         }
@@ -75,11 +85,13 @@ struct AddWebSourceView: View {
         VStack(alignment: .leading, spacing: 6) {
             TextField("Title (optional)", text: $pastedTitle)
                 .textFieldStyle(.roundedBorder)
+                .focused($focusedField, equals: .title)
             Text("Text").font(.caption).foregroundStyle(.secondary)
             TextEditor(text: $pastedText)
                 .font(.body)
                 .frame(minHeight: 200)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+                .focused($focusedField, equals: .text)
         }
     }
 

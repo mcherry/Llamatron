@@ -24,6 +24,11 @@ struct WebSearchView: View {
     @State private var isSearching = false
     @State private var isAdding = false
     @State private var errorMessage: String?
+    /// Pagination: the offset to request for the next page, and whether more remain.
+    @State private var nextOffset = 0
+    @State private var canLoadMore = false
+    @State private var isLoadingMore = false
+    @FocusState private var searchFieldFocused: Bool
 
     /// The search settings the app owns, assembled for the engine.
     private var searchConfig: WebSearchConfig {
@@ -34,6 +39,11 @@ struct WebSearchView: View {
                         marginaliaAPIKey: marginaliaAPIKey)
     }
     private var providerConfigured: Bool { WebSearch.isConfigured(searchConfig) }
+
+    /// Display name of the active provider (e.g. "Wikipedia"), shown in the header.
+    private var providerLabel: String {
+        (WebSearch.ProviderKind(rawValue: searchProvider) ?? .none).label
+    }
 
     private enum SourceStatus: Equatable {
         case fetching, added, skipped(String)
@@ -66,7 +76,17 @@ struct WebSearchView: View {
 
     private var header: some View {
         HStack {
-            Label("Search the Web", systemImage: "magnifyingglass").font(.headline)
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Search the Web").font(.headline)
+                    if providerConfigured {
+                        Text("via \(providerLabel)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            } icon: {
+                Image(systemName: "magnifyingglass")
+            }
             Spacer()
             Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
         }
@@ -86,12 +106,16 @@ struct WebSearchView: View {
         HStack {
             TextField("Search the web…", text: $query, onCommit: runSearch)
                 .textFieldStyle(.roundedBorder)
+                .focused($searchFieldFocused)
             Button(action: runSearch) {
                 if isSearching { ProgressView().controlSize(.small) } else { Text("Search") }
             }
             .disabled(isSearching || query.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .padding()
+        .onAppear {
+            DispatchQueue.main.async { searchFieldFocused = true }
+        }
     }
 
     private var resultsList: some View {
@@ -112,6 +136,23 @@ struct WebSearchView: View {
                 ForEach(results) { result in
                     resultRow(result)
                     Divider()
+                }
+                if canLoadMore {
+                    Button(action: loadMore) {
+                        HStack {
+                            Spacer()
+                            if isLoadingMore {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Label("More results", systemImage: "arrow.down.circle")
+                            }
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.callout)
+                    .disabled(isLoadingMore || isAdding)
+                    .padding(.vertical, 10)
                 }
             }
         }
@@ -177,14 +218,40 @@ struct WebSearchView: View {
         results = []
         selected = []
         status = [:]
+        nextOffset = 0
+        canLoadMore = false
         Task {
             do {
-                results = try await WebSearch.search(trimmed, config: searchConfig)
+                let page = try await WebSearch.search(trimmed, config: searchConfig)
+                results = page.results
+                nextOffset = page.nextOffset
+                canLoadMore = page.hasMore
                 if results.isEmpty { errorMessage = "No results." }
             } catch {
                 errorMessage = error.localizedDescription
             }
             isSearching = false
+        }
+    }
+
+    /// Fetches the next page and appends it, de-duplicating by URL so already-checked
+    /// results keep their selection (selection and status are keyed by URL).
+    private func loadMore() {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, canLoadMore, !isSearching, !isLoadingMore else { return }
+        isLoadingMore = true
+        Task {
+            do {
+                let page = try await WebSearch.search(trimmed, offset: nextOffset, config: searchConfig)
+                let existing = Set(results.map(\.url))
+                results.append(contentsOf: page.results.filter { !existing.contains($0.url) })
+                nextOffset = page.nextOffset
+                canLoadMore = page.hasMore
+            } catch {
+                errorMessage = error.localizedDescription
+                canLoadMore = false
+            }
+            isLoadingMore = false
         }
     }
 
