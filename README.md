@@ -84,9 +84,27 @@ ComfyUI — so you can run, compare, and **inspect** models from one SwiftUI app
 
 ## Getting started
 
+Llamatron builds against the [LlamaEngine](https://github.com/mcherry/LlamaEngine)
+package through a **local path** (`../LlamaEngine`), so check out the two repositories
+**side by side** in the same parent folder. The engine isn't fetched automatically — if
+you only cloned this repo, clone the engine next to it:
+
 ```bash
-# generate the Xcode project from project.yml (the .xcodeproj is git-ignored)
-xcodegen generate
+# run from the parent folder that contains your Llamatron checkout
+git clone https://github.com/mcherry/LlamaEngine.git
+```
+
+```
+parent/
+├── Llamatron/     ← this repository
+└── LlamaEngine/   ← the engine it builds against
+```
+
+Then generate the Xcode project and open it:
+
+```bash
+cd Llamatron
+xcodegen generate          # project.yml → Llamatron.xcodeproj (the .xcodeproj is git-ignored)
 open Llamatron.xcodeproj
 ```
 
