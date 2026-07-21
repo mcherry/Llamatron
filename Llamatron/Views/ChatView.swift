@@ -278,7 +278,14 @@ struct ChatView: View {
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
+                // A plain VStack (not Lazy) on purpose: `scrollTo(bottomAnchor, anchor:
+                // .bottom)` needs accurate row heights, but a LazyVStack only *estimates*
+                // rows it hasn't laid out. When the last row grows large (a long streamed
+                // reply over a big context) the estimate is wrong, so the pinned bottom
+                // offset overshoots past the content into blank space — and every per-token
+                // re-pin re-overshoots, leaving the transcript blank for the whole stream.
+                // A transcript is a handful of bubbles, so eager layout is cheap here.
+                VStack(spacing: 12) {
                     if visibleMessages.isEmpty {
                         emptyState
                     } else {
