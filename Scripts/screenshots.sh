@@ -33,13 +33,18 @@ fastlane ios screenshots
 echo "==> Framing (fastlane frameit)"
 ( cd fastlane/screenshots && fastlane frameit )
 
-# Copy the newest framed shot into docs/ for the README hero.
-framed="$(ls -t fastlane/screenshots/en-US/*_framed.png 2>/dev/null | head -1 || true)"
-if [ -n "$framed" ]; then
-  mkdir -p docs
-  cp "$framed" docs/screenshot-ipad.png
-  echo "==> Hero copied to docs/screenshot-ipad.png"
+# Copy each framed shot to its README location.
+mkdir -p docs
+hero="$(ls fastlane/screenshots/en-US/*01-Chat_framed.png 2>/dev/null | head -1 || true)"
+web="$(ls fastlane/screenshots/en-US/*02-WebResearch_framed.png 2>/dev/null | head -1 || true)"
+if [ -n "$hero" ]; then
+  cp "$hero" docs/screenshot-ipad.png
+  echo "==> Hero -> docs/screenshot-ipad.png"
 else
-  echo "!! No framed screenshot found. If frames are missing, run: fastlane frameit download_frames"
+  echo "!! No framed hero found. If frames are missing, run: fastlane frameit download_frames"
   exit 1
+fi
+if [ -n "$web" ]; then
+  cp "$web" docs/screenshot-web.png
+  echo "==> Web research -> docs/screenshot-web.png"
 fi

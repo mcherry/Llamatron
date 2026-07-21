@@ -17,6 +17,10 @@ ComfyUI — so you can run, compare, and **inspect** models from one SwiftUI app
   <img src="docs/screenshot-ipad.png" width="840" alt="Llamatron on iPad: a local model answering a Swift question with Markdown and syntax-highlighted code">
 </p>
 
+<p align="center">
+  <img src="docs/screenshot-web.png" width="840" alt="Llamatron on iPad: answering from an attached Wikipedia article, with the fetched source shown as a chip">
+</p>
+
 ## Features
 
 **Backends** — chosen per session; the UI adapts to each backend's capabilities:

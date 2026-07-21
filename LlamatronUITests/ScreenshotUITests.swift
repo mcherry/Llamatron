@@ -31,5 +31,12 @@ final class ScreenshotUITests: XCTestCase {
         // Let Markdown + syntax highlighting settle before capturing.
         sleep(2)
         snapshot("01-Chat")
+
+        // Web-research view: select the session with the attached Wikipedia source, so
+        // the shot shows the source chip and a transcript reflecting the researched topic.
+        app.staticTexts["Bioluminescence"].tap()
+        _ = app.staticTexts["Bioluminescence (Wikipedia)"].waitForExistence(timeout: 10)
+        sleep(1)
+        snapshot("02-WebResearch")
     }
 }
