@@ -124,7 +124,7 @@ struct SearchProviderManagerView: View {
         case .linkup: return $linkupAPIKey
         case .tinyfish: return $tinyfishAPIKey
         case .marginalia: return $marginaliaAPIKey
-        case .none, .wikipedia: return .constant("")
+        case .none, .wikipedia, .meta: return .constant("")
         }
     }
 }
