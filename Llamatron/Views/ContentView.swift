@@ -99,6 +99,13 @@ struct ContentView: View {
             }
         }
         #endif
+        #if DEBUG
+        .task {
+            // Screenshot automation: seed anonymized content and select the hero.
+            guard ScreenshotSeed.isActive, sessions.isEmpty else { return }
+            selectedID = ScreenshotSeed.populate(modelContext)
+        }
+        #endif
     }
 
     private func newSession() {

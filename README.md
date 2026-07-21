@@ -13,6 +13,10 @@ ComfyUI — so you can run, compare, and **inspect** models from one SwiftUI app
 > [LlamaEngine](https://github.com/mcherry/LlamaEngine) package. Universal app for
 > macOS 15+ and iPadOS 18+, built against the macOS 26 / iOS 26 SDK.
 
+<p align="center">
+  <img src="docs/screenshot-ipad.png" width="840" alt="Llamatron on iPad: a local model answering a Swift question with Markdown and syntax-highlighted code">
+</p>
+
 ## Features
 
 **Backends** — chosen per session; the UI adapts to each backend's capabilities:

@@ -10,3 +10,8 @@ Llamatron/Info-iOS.plist
 
 # macOS
 .DS_Store
+
+# fastlane (screenshots are build artifacts; the README hero is copied into docs/)
+fastlane/screenshots/
+fastlane/test_output/
+fastlane/report.xml

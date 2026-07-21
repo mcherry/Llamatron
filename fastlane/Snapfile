@@ -1,0 +1,25 @@
+# fastlane snapshot config — landscape iPad screenshots for Llamatron.
+# See ../../Llamatron-project/llamatron/SCREENSHOTS_PLAN.md for the full design.
+
+devices([
+  "iPad Pro (12.9-inch) (4th generation)"
+])
+
+languages([
+  "en-US"
+])
+
+# The iOS app scheme; its test action runs LlamatronUITests.
+scheme("Llamatron-iOS")
+
+output_directory("./fastlane/screenshots")
+
+# Start fresh each run so screenshots are reproducible.
+clear_previous_screenshots(true)
+
+# Clean, consistent status bar (9:41, full battery/reception).
+override_status_bar(true)
+
+# Only run the screenshot UI test.
+test_target_name("LlamatronUITests")
+only_testing(["LlamatronUITests/ScreenshotUITests/testScreenshots"])

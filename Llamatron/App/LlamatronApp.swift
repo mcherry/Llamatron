@@ -14,7 +14,15 @@ struct LlamatronApp: App {
 
         do {
             // The persistence schema is owned by the engine's Store product.
+            #if DEBUG
+            if ScreenshotSeed.isActive {
+                container = ScreenshotSeed.makeContainer()
+            } else {
+                container = try ModelContainer(for: Schema(LlamaEngineStore.models))
+            }
+            #else
             container = try ModelContainer(for: Schema(LlamaEngineStore.models))
+            #endif
         } catch {
             fatalError("Failed to create the SwiftData container: \(error)")
         }

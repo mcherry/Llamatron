@@ -99,6 +99,18 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.llamatron.LlamatronTests
         GENERATE_INFOPLIST_FILE: YES
+  LlamatronUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: LlamatronUITests
+    dependencies:
+      - target: Llamatron-iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.llamatron.LlamatronUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Llamatron-iOS
 schemes:
   Llamatron:
     build:
@@ -113,4 +125,7 @@ schemes:
         Llamatron-iOS: all
     run:
       config: Debug
+    test:
+      targets:
+        - LlamatronUITests
 
