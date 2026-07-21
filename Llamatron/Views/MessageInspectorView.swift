@@ -212,18 +212,25 @@ struct MessageInspectorView: View {
             Text("The exact request sent for this turn.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            ScrollView([.vertical, .horizontal], showsIndicators: true) {
-                Text(payload)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
+            // A two-axis ScrollView centers content that is smaller than the viewport,
+            // which looks awkward for a short payload. Pin the text to the top-leading
+            // by making it fill at least the viewport (GeometryReader supplies the size).
+            GeometryReader { geo in
+                ScrollView([.vertical, .horizontal], showsIndicators: true) {
+                    Text(payload)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .padding(8)
+                        .frame(minWidth: geo.size.width,
+                               minHeight: geo.size.height,
+                               alignment: .topLeading)
+                }
+                .background(Color.platformTextBackground,
+                            in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.platformSeparator))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.platformTextBackground,
-                        in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color.platformSeparator))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
