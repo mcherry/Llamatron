@@ -25,6 +25,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.searxngURL) private var searxngURL = ""
     @AppStorage(SettingsKey.braveAPIKey) private var braveAPIKey = ""
     @AppStorage(SettingsKey.tavilyAPIKey) private var tavilyAPIKey = ""
+    @AppStorage(SettingsKey.exaAPIKey) private var exaAPIKey = ""
     @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
 
     @AppStorage(SettingsKey.imageGenEnabled) private var imageGenEnabled = false
@@ -168,6 +169,10 @@ struct SettingsView: View {
                 } else if searchProvider == WebSearch.ProviderKind.tavily.rawValue {
                     SecureField("Tavily API key", text: $tavilyAPIKey)
                     Text("An LLM-focused search API with a free tier, from tavily.com. Stored locally in app settings.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if searchProvider == WebSearch.ProviderKind.exa.rawValue {
+                    SecureField("Exa API key", text: $exaAPIKey)
+                    Text("A neural + keyword search API built for AI, from exa.ai (free monthly credits). Stored locally in app settings.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Text("Find web pages to add as context sources from the globe button in the composer. Search uses sanctioned APIs only (never scraping); result pages are fetched politely — robots.txt and per-host rate limits apply.")

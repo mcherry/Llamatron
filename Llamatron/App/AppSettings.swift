@@ -31,6 +31,7 @@ enum SettingsKey {
     static let searxngURL = "searxngURL"
     static let braveAPIKey = "braveAPIKey"
     static let tavilyAPIKey = "tavilyAPIKey"
+    static let exaAPIKey = "exaAPIKey"
     static let marginaliaAPIKey = "marginaliaAPIKey"
 
     // Image generation (app defaults; per-chat overrides live on ChatSession).
