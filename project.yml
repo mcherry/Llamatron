@@ -15,8 +15,8 @@ settings:
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
     INFOPLIST_KEY_NSMicrophoneUsageDescription: "Llamatron records the microphone only while you dictate, to transcribe your speech into the message box."
     INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Llamatron uses speech recognition to turn your dictation into text. It runs on-device when your Mac supports it."
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.1.1"
+    CURRENT_PROJECT_VERSION: "2"
 packages:
   LlamaEngine:
     path: ../LlamaEngine
