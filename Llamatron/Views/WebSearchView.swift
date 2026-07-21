@@ -168,13 +168,13 @@ struct WebSearchView: View {
         }
     }
 
-    /// A one-line warning listing the engines Meta-search couldn't use this run, with why.
+    /// A one-line warning listing the engines Meta-search couldn't use this run, with why —
+    /// and, when a provider is cooling down after a rate-limit, roughly how long until retry.
     @ViewBuilder
     private var skippedEnginesNotice: some View {
         let failed = providerOutcomes.filter(\.failed)
         if !failed.isEmpty {
-            let detail = failed.map { "\($0.provider.label) (\($0.failureReason?.label ?? "unavailable"))" }
-                               .joined(separator: ", ")
+            let detail = failed.map(describeOutcome).joined(separator: ", ")
             Label("Skipped \(failed.count) engine\(failed.count == 1 ? "" : "s"): \(detail)",
                   systemImage: "exclamationmark.triangle")
                 .font(.caption)
@@ -182,6 +182,22 @@ struct WebSearchView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal).padding(.vertical, 8)
         }
+    }
+
+    /// "Brave (rate-limited, retry in ~5m)" — provider, reason, and cooldown remaining if any.
+    private func describeOutcome(_ outcome: WebSearch.ProviderOutcome) -> String {
+        var text = outcome.failureReason?.label ?? "unavailable"
+        if let retry = outcome.retryAfter, retry > 0 {
+            text += ", retry in \(humanizeDuration(retry))"
+        }
+        return "\(outcome.provider.label) (\(text))"
+    }
+
+    /// Compact duration: seconds under 90s, then minutes, then hours.
+    private func humanizeDuration(_ seconds: TimeInterval) -> String {
+        if seconds < 90 { return "~\(Int(seconds.rounded()))s" }
+        if seconds < 5400 { return "~\(Int((seconds / 60).rounded()))m" }
+        return "~\(Int((seconds / 3600).rounded()))h"
     }
 
     private func resultRow(_ result: WebSearch.Result) -> some View {
