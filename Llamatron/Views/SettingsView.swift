@@ -30,6 +30,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.tinyfishAPIKey) private var tinyfishAPIKey = ""
     @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
     @AppStorage(SettingsKey.metaDisabledProviders) private var metaDisabledProviders = ""
+    @AppStorage(SettingsKey.metaMode) private var metaMode = WebSearch.MetaSearchMode.comprehensive.rawValue
 
     @AppStorage(SettingsKey.imageGenEnabled) private var imageGenEnabled = false
     @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
@@ -172,6 +173,14 @@ struct SettingsView: View {
                              ? "No engines enabled — turn some on in Manage Providers."
                              : "Uses: " + engines.map(\.label).joined(separator: ", "))
                             .font(.caption).foregroundStyle(.secondary)
+                        Picker("Mode", selection: $metaMode) {
+                            ForEach(WebSearch.MetaSearchMode.allCases) { mode in
+                                Text(mode.label).tag(mode.rawValue)
+                            }
+                        }
+                        if let mode = WebSearch.MetaSearchMode(rawValue: metaMode) {
+                            Text(mode.summary).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 Button("Manage Providers…") { showingProviderManager = true }
@@ -327,7 +336,8 @@ struct SettingsView: View {
                         linkupAPIKey: linkupAPIKey,
                         tinyfishAPIKey: tinyfishAPIKey,
                         marginaliaAPIKey: marginaliaAPIKey,
-                        enabledProviders: WebSearchSettings.enabledProviders(disabledCSV: metaDisabledProviders))
+                        enabledProviders: WebSearchSettings.enabledProviders(disabledCSV: metaDisabledProviders),
+                        metaMode: WebSearch.MetaSearchMode(rawValue: metaMode) ?? .comprehensive)
     }
 
     /// Whether a web-search provider has the key/URL it needs (from the @AppStorage keys).

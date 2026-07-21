@@ -47,6 +47,8 @@ enum SettingsKey {
     /// Meta-search: providers excluded from the fan-out, as a CSV of provider rawValues
     /// (empty = every provider enabled).
     static let metaDisabledProviders = "metaDisabledProviders"
+    /// Meta-search combine mode (rawValue of `WebSearch.MetaSearchMode`).
+    static let metaMode = "metaMode"
 
     // Image generation (app defaults; per-chat overrides live on ChatSession).
     static let imageGenEnabled = "imageGenEnabled"

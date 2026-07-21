@@ -20,6 +20,7 @@ struct WebSearchView: View {
     @AppStorage(SettingsKey.tinyfishAPIKey) private var tinyfishAPIKey = ""
     @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
     @AppStorage(SettingsKey.metaDisabledProviders) private var metaDisabledProviders = ""
+    @AppStorage(SettingsKey.metaMode) private var metaMode = WebSearch.MetaSearchMode.comprehensive.rawValue
 
     @State private var query = ""
     @State private var results: [WebSearch.Result] = []
@@ -45,7 +46,8 @@ struct WebSearchView: View {
                         linkupAPIKey: linkupAPIKey,
                         tinyfishAPIKey: tinyfishAPIKey,
                         marginaliaAPIKey: marginaliaAPIKey,
-                        enabledProviders: WebSearchSettings.enabledProviders(disabledCSV: metaDisabledProviders))
+                        enabledProviders: WebSearchSettings.enabledProviders(disabledCSV: metaDisabledProviders),
+                        metaMode: WebSearch.MetaSearchMode(rawValue: metaMode) ?? .comprehensive)
     }
     private var providerConfigured: Bool { WebSearch.isConfigured(searchConfig) }
 
