@@ -35,10 +35,6 @@ struct SearchProviderManagerView: View {
                 ForEach(WebSearch.catalog) { provider in
                     Section { providerRow(provider) }
                 }
-                Section {
-                    Text("Only the providers built into the app are shown — you can configure the ones you want, but you can't add arbitrary search APIs. Keys are stored locally in app settings and shared with the search sheet.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
             }
             .formStyle(.grouped)
         }
@@ -90,8 +86,9 @@ struct SearchProviderManagerView: View {
         case .none:
             EmptyView()
         case .instanceURL:
-            TextField("Instance URL (e.g. http://localhost:8080)", text: binding(for: provider))
+            TextField("Instance URL", text: binding(for: provider))
                 .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: .infinity)
                 .autocorrectionDisabled()
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
@@ -99,6 +96,7 @@ struct SearchProviderManagerView: View {
         case .apiKey:
             SecureField("API key", text: binding(for: provider))
                 .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: .infinity)
         }
     }
 
