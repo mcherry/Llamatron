@@ -26,6 +26,8 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.braveAPIKey) private var braveAPIKey = ""
     @AppStorage(SettingsKey.tavilyAPIKey) private var tavilyAPIKey = ""
     @AppStorage(SettingsKey.exaAPIKey) private var exaAPIKey = ""
+    @AppStorage(SettingsKey.linkupAPIKey) private var linkupAPIKey = ""
+    @AppStorage(SettingsKey.tinyfishAPIKey) private var tinyfishAPIKey = ""
     @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
 
     @AppStorage(SettingsKey.imageGenEnabled) private var imageGenEnabled = false
@@ -173,6 +175,14 @@ struct SettingsView: View {
                 } else if searchProvider == WebSearch.ProviderKind.exa.rawValue {
                     SecureField("Exa API key", text: $exaAPIKey)
                     Text("A neural + keyword search API built for AI, from exa.ai (free monthly credits). Stored locally in app settings.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if searchProvider == WebSearch.ProviderKind.linkup.rawValue {
+                    SecureField("Linkup API key", text: $linkupAPIKey)
+                    Text("A production web-search API for AI, from linkup.so (free monthly credits). Stored locally in app settings.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if searchProvider == WebSearch.ProviderKind.tinyfish.rawValue {
+                    SecureField("TinyFish API key", text: $tinyfishAPIKey)
+                    Text("A browser-rendered search API from tinyfish.ai — search is free and uses no credits. Stored locally in app settings.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Text("Find web pages to add as context sources from the globe button in the composer. Search uses sanctioned APIs only (never scraping); result pages are fetched politely — robots.txt and per-host rate limits apply.")

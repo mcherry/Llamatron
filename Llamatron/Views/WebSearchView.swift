@@ -16,6 +16,8 @@ struct WebSearchView: View {
     @AppStorage(SettingsKey.braveAPIKey) private var braveAPIKey = ""
     @AppStorage(SettingsKey.tavilyAPIKey) private var tavilyAPIKey = ""
     @AppStorage(SettingsKey.exaAPIKey) private var exaAPIKey = ""
+    @AppStorage(SettingsKey.linkupAPIKey) private var linkupAPIKey = ""
+    @AppStorage(SettingsKey.tinyfishAPIKey) private var tinyfishAPIKey = ""
     @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
 
     @State private var query = ""
@@ -38,6 +40,8 @@ struct WebSearchView: View {
                         braveAPIKey: braveAPIKey,
                         tavilyAPIKey: tavilyAPIKey,
                         exaAPIKey: exaAPIKey,
+                        linkupAPIKey: linkupAPIKey,
+                        tinyfishAPIKey: tinyfishAPIKey,
                         marginaliaAPIKey: marginaliaAPIKey)
     }
     private var providerConfigured: Bool { WebSearch.isConfigured(searchConfig) }
