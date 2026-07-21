@@ -21,6 +21,7 @@ struct WebSearchView: View {
     @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
     @AppStorage(SettingsKey.metaDisabledProviders) private var metaDisabledProviders = ""
     @AppStorage(SettingsKey.metaMode) private var metaMode = WebSearch.MetaSearchMode.comprehensive.rawValue
+    @AppStorage(SettingsKey.searchUsage) private var searchUsageJSON = ""
 
     @State private var query = ""
     @State private var results: [WebSearch.Result] = []
@@ -54,6 +55,15 @@ struct WebSearchView: View {
     /// Display name of the active provider (e.g. "Wikipedia"), shown in the header.
     private var providerLabel: String {
         (WebSearch.ProviderKind(rawValue: searchProvider) ?? .none).label
+    }
+
+    /// Header subtitle: the single provider, or for Meta-search the engines it will query.
+    private var providerSubtitle: String {
+        let kind = WebSearch.ProviderKind(rawValue: searchProvider) ?? .none
+        guard kind == .meta else { return "via \(providerLabel)" }
+        let engines = WebSearch.metaProviders(config: searchConfig)
+        if engines.isEmpty { return "Meta-search — no engines enabled" }
+        return "Meta-search — " + engines.map(\.label).joined(separator: ", ")
     }
 
     private enum SourceStatus: Equatable {
@@ -91,8 +101,9 @@ struct WebSearchView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Search the Web").font(.headline)
                     if providerConfigured {
-                        Text("via \(providerLabel)")
+                        Text(providerSubtitle)
                             .font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(2)
                     }
                 }
             } icon: {
@@ -272,6 +283,7 @@ struct WebSearchView: View {
                 nextOffset = page.nextOffset
                 canLoadMore = page.hasMore
                 providerOutcomes = page.providerOutcomes
+                searchUsageJSON = SearchUsage.recording(page.queriedProviders, into: searchUsageJSON)
                 if results.isEmpty && !page.providerOutcomes.contains(where: \.failed) {
                     errorMessage = "No results."
                 }
@@ -295,6 +307,7 @@ struct WebSearchView: View {
                 results.append(contentsOf: page.results.filter { !existing.contains($0.url) })
                 nextOffset = page.nextOffset
                 canLoadMore = page.hasMore
+                searchUsageJSON = SearchUsage.recording(page.queriedProviders, into: searchUsageJSON)
             } catch {
                 errorMessage = error.localizedDescription
                 canLoadMore = false

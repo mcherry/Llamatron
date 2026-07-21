@@ -49,6 +49,8 @@ enum SettingsKey {
     static let metaDisabledProviders = "metaDisabledProviders"
     /// Meta-search combine mode (rawValue of `WebSearch.MetaSearchMode`).
     static let metaMode = "metaMode"
+    /// Per-provider monthly request counts (JSON of `SearchUsage`).
+    static let searchUsage = "searchUsage"
 
     // Image generation (app defaults; per-chat overrides live on ChatSession).
     static let imageGenEnabled = "imageGenEnabled"

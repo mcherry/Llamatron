@@ -16,6 +16,7 @@ struct SearchProviderManagerView: View {
     @AppStorage(SettingsKey.tinyfishAPIKey) private var tinyfishAPIKey = ""
     @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
     @AppStorage(SettingsKey.metaDisabledProviders) private var metaDisabledProviders = ""
+    @AppStorage(SettingsKey.searchUsage) private var searchUsageJSON = ""
 
     /// The credentials assembled so we can compute each provider's readiness.
     private var config: WebSearchConfig {
@@ -70,6 +71,7 @@ struct SearchProviderManagerView: View {
                     .foregroundStyle(ready ? Color.green : Color.secondary)
             }
             Text(provider.summary).font(.caption).foregroundStyle(.secondary)
+            usageRow(provider)
             credentialField(provider)
             HStack(alignment: .center) {
                 linksRow(provider)
@@ -83,6 +85,16 @@ struct SearchProviderManagerView: View {
     private func readinessLabel(_ provider: WebSearch.ProviderKind, ready: Bool) -> String {
         if ready { return "Ready" }
         return provider.credentialKind == .instanceURL ? "Needs a URL" : "Needs a key"
+    }
+
+    /// A subtle line showing how many requests this provider has served this month.
+    @ViewBuilder
+    private func usageRow(_ provider: WebSearch.ProviderKind) -> some View {
+        let uses = SearchUsage.count(provider, in: searchUsageJSON)
+        if uses > 0 {
+            Text("\(uses) request\(uses == 1 ? "" : "s") this month")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder
