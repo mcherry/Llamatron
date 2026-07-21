@@ -2,6 +2,15 @@ import Foundation
 import LlamaEngine
 import LlamaEngineStore
 
+/// Meta-search membership, derived from the persisted CSV of *disabled* provider rawValues
+/// so the default (empty string) enables every provider in the catalog.
+enum WebSearchSettings {
+    static func enabledProviders(disabledCSV: String) -> Set<WebSearch.ProviderKind> {
+        let disabled = Set(disabledCSV.split(separator: ",").map(String.init))
+        return Set(WebSearch.catalog.filter { !disabled.contains($0.rawValue) })
+    }
+}
+
 /// `@AppStorage` keys for app-wide settings, kept in one place to avoid typos.
 enum SettingsKey {
     static let serverURL = "serverURL"
@@ -35,6 +44,9 @@ enum SettingsKey {
     static let linkupAPIKey = "linkupAPIKey"
     static let tinyfishAPIKey = "tinyfishAPIKey"
     static let marginaliaAPIKey = "marginaliaAPIKey"
+    /// Meta-search: providers excluded from the fan-out, as a CSV of provider rawValues
+    /// (empty = every provider enabled).
+    static let metaDisabledProviders = "metaDisabledProviders"
 
     // Image generation (app defaults; per-chat overrides live on ChatSession).
     static let imageGenEnabled = "imageGenEnabled"

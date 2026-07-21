@@ -15,6 +15,7 @@ struct SearchProviderManagerView: View {
     @AppStorage(SettingsKey.linkupAPIKey) private var linkupAPIKey = ""
     @AppStorage(SettingsKey.tinyfishAPIKey) private var tinyfishAPIKey = ""
     @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
+    @AppStorage(SettingsKey.metaDisabledProviders) private var metaDisabledProviders = ""
 
     /// The credentials assembled so we can compute each provider's readiness.
     private var config: WebSearchConfig {
@@ -70,7 +71,11 @@ struct SearchProviderManagerView: View {
             }
             Text(provider.summary).font(.caption).foregroundStyle(.secondary)
             credentialField(provider)
-            linksRow(provider)
+            HStack(alignment: .center) {
+                linksRow(provider)
+                Spacer()
+                enabledToggle(provider)
+            }
         }
         .padding(.vertical, 4)
     }
@@ -111,6 +116,33 @@ struct SearchProviderManagerView: View {
             }
         }
         .font(.caption)
+    }
+
+    /// A checkbox for whether this provider is part of Meta-search's fan-out.
+    @ViewBuilder
+    private func enabledToggle(_ provider: WebSearch.ProviderKind) -> some View {
+        Toggle("Enabled", isOn: enabledBinding(for: provider))
+            #if os(macOS)
+            .toggleStyle(.checkbox)
+            #endif
+            .font(.caption)
+    }
+
+    /// The providers the user has excluded from Meta-search (persisted as a CSV of rawValues).
+    private var disabledProviders: Set<String> {
+        Set(metaDisabledProviders.split(separator: ",").map(String.init))
+    }
+
+    /// Binds a provider's Meta-search membership to the stored disabled-set CSV.
+    private func enabledBinding(for provider: WebSearch.ProviderKind) -> Binding<Bool> {
+        Binding(
+            get: { !disabledProviders.contains(provider.rawValue) },
+            set: { isOn in
+                var disabled = disabledProviders
+                if isOn { disabled.remove(provider.rawValue) } else { disabled.insert(provider.rawValue) }
+                metaDisabledProviders = disabled.sorted().joined(separator: ",")
+            }
+        )
     }
 
     /// Maps a provider to its stored credential (URL or API key). Keyless providers get a

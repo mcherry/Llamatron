@@ -29,6 +29,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.linkupAPIKey) private var linkupAPIKey = ""
     @AppStorage(SettingsKey.tinyfishAPIKey) private var tinyfishAPIKey = ""
     @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
+    @AppStorage(SettingsKey.metaDisabledProviders) private var metaDisabledProviders = ""
 
     @AppStorage(SettingsKey.imageGenEnabled) private var imageGenEnabled = false
     @AppStorage(SettingsKey.imageBackendKind) private var imageBackendKind = ImageBackendKind.easyDiffusion.rawValue
@@ -165,6 +166,13 @@ struct SettingsView: View {
                     }
                     .font(.caption)
                     Text(selected.summary).font(.caption).foregroundStyle(.secondary)
+                    if selected == .meta {
+                        let engines = WebSearch.metaProviders(config: webSearchConfig)
+                        Text(engines.isEmpty
+                             ? "No engines enabled — turn some on in Manage Providers."
+                             : "Uses: " + engines.map(\.label).joined(separator: ", "))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Button("Manage Providers…") { showingProviderManager = true }
                     .sheet(isPresented: $showingProviderManager) { SearchProviderManagerView() }
@@ -309,16 +317,22 @@ struct SettingsView: View {
         loadingModels = false
     }
 
+    /// The web-search settings assembled from the @AppStorage keys, including which providers
+    /// are enabled for meta-search.
+    private var webSearchConfig: WebSearchConfig {
+        WebSearchConfig(searxngURL: searxngURL,
+                        braveAPIKey: braveAPIKey,
+                        tavilyAPIKey: tavilyAPIKey,
+                        exaAPIKey: exaAPIKey,
+                        linkupAPIKey: linkupAPIKey,
+                        tinyfishAPIKey: tinyfishAPIKey,
+                        marginaliaAPIKey: marginaliaAPIKey,
+                        enabledProviders: WebSearchSettings.enabledProviders(disabledCSV: metaDisabledProviders))
+    }
+
     /// Whether a web-search provider has the key/URL it needs (from the @AppStorage keys).
     private func providerReady(_ provider: WebSearch.ProviderKind) -> Bool {
-        let config = WebSearchConfig(searxngURL: searxngURL,
-                                     braveAPIKey: braveAPIKey,
-                                     tavilyAPIKey: tavilyAPIKey,
-                                     exaAPIKey: exaAPIKey,
-                                     linkupAPIKey: linkupAPIKey,
-                                     tinyfishAPIKey: tinyfishAPIKey,
-                                     marginaliaAPIKey: marginaliaAPIKey)
-        return WebSearch.isReady(provider, config: config)
+        WebSearch.isReady(provider, config: webSearchConfig)
     }
 
     /// The chat/LLM backends the user can connect. Image generation is an optional
