@@ -42,6 +42,7 @@ struct SettingsView: View {
     @State private var allModels: [OllamaModel] = []
     @State private var loadingModels = false
     @State private var showingModelManager = false
+    @State private var showingProviderManager = false
 
     @State private var imageModels: [ImageModel] = []
     @State private var imageTesting = false
@@ -153,39 +154,21 @@ struct SettingsView: View {
                         Text(kind.label).tag(kind.rawValue)
                     }
                 }
-                if searchProvider == WebSearch.ProviderKind.wikipedia.rawValue {
-                    Text("Searches English Wikipedia — no account needed. Great for history, places, and general facts.")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else if searchProvider == WebSearch.ProviderKind.searxng.rawValue {
-                    TextField("SearXNG instance URL", text: $searxngURL)
-                    Text("A self-hosted SearXNG base URL (e.g. http://localhost:8080) — no account needed; it aggregates real engines.")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else if searchProvider == WebSearch.ProviderKind.marginalia.rawValue {
-                    TextField("Marginalia API key", text: $marginaliaAPIKey)
-                    Text("An independent engine for text-heavy, non-commercial pages. The default “public” key works (shared rate limit); email contact@marginalia-search.com for a free personal key.")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else if searchProvider == WebSearch.ProviderKind.brave.rawValue {
-                    SecureField("Brave Search API key", text: $braveAPIKey)
-                    Text("From the Brave Search API dashboard. Stored locally in app settings.")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else if searchProvider == WebSearch.ProviderKind.tavily.rawValue {
-                    SecureField("Tavily API key", text: $tavilyAPIKey)
-                    Text("An LLM-focused search API with a free tier, from tavily.com. Stored locally in app settings.")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else if searchProvider == WebSearch.ProviderKind.exa.rawValue {
-                    SecureField("Exa API key", text: $exaAPIKey)
-                    Text("A neural + keyword search API built for AI, from exa.ai (free monthly credits). Stored locally in app settings.")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else if searchProvider == WebSearch.ProviderKind.linkup.rawValue {
-                    SecureField("Linkup API key", text: $linkupAPIKey)
-                    Text("A production web-search API for AI, from linkup.so (free monthly credits). Stored locally in app settings.")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else if searchProvider == WebSearch.ProviderKind.tinyfish.rawValue {
-                    SecureField("TinyFish API key", text: $tinyfishAPIKey)
-                    Text("A browser-rendered search API from tinyfish.ai — search is free and uses no credits. Stored locally in app settings.")
-                        .font(.caption).foregroundStyle(.secondary)
+                if let selected = WebSearch.ProviderKind(rawValue: searchProvider), selected != .none {
+                    let ready = providerReady(selected)
+                    Label {
+                        Text(ready ? "\(selected.label) is ready."
+                                   : "\(selected.label) needs setup — open Manage Providers.")
+                    } icon: {
+                        Image(systemName: ready ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(ready ? Color.green : Color.orange)
+                    }
+                    .font(.caption)
+                    Text(selected.summary).font(.caption).foregroundStyle(.secondary)
                 }
-                Text("Find web pages to add as context sources from the globe button in the composer. Search uses sanctioned APIs only (never scraping); result pages are fetched politely — robots.txt and per-host rate limits apply.")
+                Button("Manage Providers…") { showingProviderManager = true }
+                    .sheet(isPresented: $showingProviderManager) { SearchProviderManagerView() }
+                Text("Set up API keys and choose an engine in Manage Providers. Search uses sanctioned APIs only (never scraping); result pages are fetched politely — robots.txt and per-host rate limits apply.")
                     .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -324,6 +307,18 @@ struct SettingsView: View {
             allModels = fetched.sorted { $0.name < $1.name }
         }
         loadingModels = false
+    }
+
+    /// Whether a web-search provider has the key/URL it needs (from the @AppStorage keys).
+    private func providerReady(_ provider: WebSearch.ProviderKind) -> Bool {
+        let config = WebSearchConfig(searxngURL: searxngURL,
+                                     braveAPIKey: braveAPIKey,
+                                     tavilyAPIKey: tavilyAPIKey,
+                                     exaAPIKey: exaAPIKey,
+                                     linkupAPIKey: linkupAPIKey,
+                                     tinyfishAPIKey: tinyfishAPIKey,
+                                     marginaliaAPIKey: marginaliaAPIKey)
+        return WebSearch.isReady(provider, config: config)
     }
 
     /// The chat/LLM backends the user can connect. Image generation is an optional
