@@ -32,6 +32,7 @@ struct WebSearchView: View {
     @State private var nextOffset = 0
     @State private var canLoadMore = false
     @State private var isLoadingMore = false
+    @State private var providerOutcomes: [WebSearch.ProviderOutcome] = []
     @FocusState private var searchFieldFocused: Bool
 
     /// The search settings the app owns, assembled for the engine.
@@ -135,7 +136,8 @@ struct WebSearchView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
                 }
-                if results.isEmpty && errorMessage == nil {
+                skippedEnginesNotice
+                if results.isEmpty && errorMessage == nil && !providerOutcomes.contains(where: \.failed) {
                     Text(isSearching ? "" : "Search to find pages, then pick which to add as sources.")
                         .font(.callout).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -163,6 +165,22 @@ struct WebSearchView: View {
                     .padding(.vertical, 10)
                 }
             }
+        }
+    }
+
+    /// A one-line warning listing the engines Meta-search couldn't use this run, with why.
+    @ViewBuilder
+    private var skippedEnginesNotice: some View {
+        let failed = providerOutcomes.filter(\.failed)
+        if !failed.isEmpty {
+            let detail = failed.map { "\($0.provider.label) (\($0.failureReason?.label ?? "unavailable"))" }
+                               .joined(separator: ", ")
+            Label("Skipped \(failed.count) engine\(failed.count == 1 ? "" : "s"): \(detail)",
+                  systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal).padding(.vertical, 8)
         }
     }
 
@@ -228,13 +246,17 @@ struct WebSearchView: View {
         status = [:]
         nextOffset = 0
         canLoadMore = false
+        providerOutcomes = []
         Task {
             do {
                 let page = try await WebSearch.search(trimmed, config: searchConfig)
                 results = page.results
                 nextOffset = page.nextOffset
                 canLoadMore = page.hasMore
-                if results.isEmpty { errorMessage = "No results." }
+                providerOutcomes = page.providerOutcomes
+                if results.isEmpty && !page.providerOutcomes.contains(where: \.failed) {
+                    errorMessage = "No results."
+                }
             } catch {
                 errorMessage = error.localizedDescription
             }
