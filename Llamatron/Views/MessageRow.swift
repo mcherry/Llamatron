@@ -179,6 +179,7 @@ struct MessageRow: View {
                     ProgressView()
                         .controlSize(.small)
                 }
+                toolImages
                 if message.wasTruncated && !isGenerating {
                     truncationNotice
                 }
@@ -284,8 +285,25 @@ struct MessageRow: View {
     }
 
     /// A generated image reply with hover actions to save or copy it.
-    private func generatedImage(_ nsImage: PlatformImage) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    /// Graphics produced by tools this turn (e.g. render_graphic), shown below the reply.
+    @ViewBuilder
+    private var toolImages: some View {
+        let images = message.orderedToolCallRecords.compactMap { $0.imageData.flatMap { PlatformImage(data: $0) } }
+        if !images.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(images.enumerated()), id: \.offset) { _, image in
+                    Image(platformImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 512, maxHeight: 512)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
+                }
+            }
+        }
+    }
+
+    private func generatedImage(_ nsImage: PlatformImage) -> some View {        VStack(alignment: .leading, spacing: 4) {
             Image(platformImage: nsImage)
                 .resizable()
                 .scaledToFit()

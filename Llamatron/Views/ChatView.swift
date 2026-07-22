@@ -692,6 +692,7 @@ struct ChatView: View {
             CurrentDateTimeTool(),
             GetWeatherTool(),
             WebSearchTool(config: WebSearchSettings.config()),
+            RenderGraphicTool(),
             FetchURLTool(config: FetchURLConfig(allowLocalNetwork: toolsAllowLocalNetwork))
         ]
         let chunks = session.allowedToolNames.contains("retrieve_context") ? session.retrievableChunks() : []

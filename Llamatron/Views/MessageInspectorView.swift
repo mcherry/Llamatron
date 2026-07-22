@@ -200,6 +200,13 @@ struct MessageInspectorView: View {
                 .foregroundStyle(record.isError ? Color.orange : Color.secondary)
                 .lineLimit(4)
                 .textSelection(.enabled)
+            if let data = record.imageData, let image = PlatformImage(data: data) {
+                Image(platformImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
         }
         .padding(8)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
