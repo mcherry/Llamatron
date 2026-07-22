@@ -90,7 +90,7 @@ struct SessionToolsButton: View {
         Button {
             showingPopover.toggle()
         } label: {
-            Image(systemName: isActive ? "wrench.fill" : "wrench")
+            Image(systemName: "wrench")
                 .font(.title3)
                 .foregroundStyle(isActive ? Color.accentColor : .secondary)
         }
