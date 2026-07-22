@@ -108,6 +108,7 @@ struct SessionToolsButton: View {
                     VStack(alignment: .leading, spacing: 16) {
                         ToolsPickerView(session: session)
                     }
+                    .toggleStyle(.switch)
                     .padding()
                 }
                 Divider()
