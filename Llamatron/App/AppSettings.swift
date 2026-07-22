@@ -9,6 +9,24 @@ enum WebSearchSettings {
         let disabled = Set(disabledCSV.split(separator: ",").map(String.init))
         return Set(WebSearch.catalog.filter { !disabled.contains($0.rawValue) })
     }
+
+    /// Builds the current `WebSearchConfig` from persisted settings, read directly (the
+    /// web_search tool captures it once at send time and needs no view reactivity).
+    static func config() -> WebSearchConfig {
+        let defaults = UserDefaults.standard
+        func string(_ key: String, _ fallback: String = "") -> String { defaults.string(forKey: key) ?? fallback }
+        return WebSearchConfig(
+            provider: WebSearch.ProviderKind(rawValue: string(SettingsKey.searchProvider, WebSearch.ProviderKind.none.rawValue)) ?? .none,
+            searxngURL: string(SettingsKey.searxngURL),
+            braveAPIKey: string(SettingsKey.braveAPIKey),
+            tavilyAPIKey: string(SettingsKey.tavilyAPIKey),
+            exaAPIKey: string(SettingsKey.exaAPIKey),
+            linkupAPIKey: string(SettingsKey.linkupAPIKey),
+            tinyfishAPIKey: string(SettingsKey.tinyfishAPIKey),
+            marginaliaAPIKey: string(SettingsKey.marginaliaAPIKey),
+            enabledProviders: enabledProviders(disabledCSV: string(SettingsKey.metaDisabledProviders)),
+            metaMode: WebSearch.MetaSearchMode(rawValue: string(SettingsKey.metaMode, WebSearch.MetaSearchMode.comprehensive.rawValue)) ?? .comprehensive)
+    }
 }
 
 /// `@AppStorage` keys for app-wide settings, kept in one place to avoid typos.
@@ -36,6 +54,8 @@ enum SettingsKey {
     static let webSearchEnabled = "webSearchEnabled"
     /// Tool calling (let the model call local tools). Off by default — security-sensitive.
     static let toolsFeatureEnabled = "toolsFeatureEnabled"
+    /// Allow the fetch_url tool to reach local/LAN addresses (to test local servers).
+    static let toolsAllowLocalNetwork = "toolsAllowLocalNetwork"
 
     // Web search providers (used by the web-source search sheet).
     static let searchProvider = "searchProvider"
@@ -101,6 +121,8 @@ enum SettingsDefault {
     static let webSearchEnabled = true
     /// Tool calling stays off until the user explicitly turns it on (security posture).
     static let toolsFeatureEnabled = false
+    /// fetch_url may reach local/LAN addresses by default (the deliberate relaxation).
+    static let toolsAllowLocalNetwork = true
     static let imageServerURL = "http://localhost:9000"
     static let imageSteps = 20
     static let imageSize = 640

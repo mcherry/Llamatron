@@ -36,6 +36,7 @@ struct ChatView: View {
     @AppStorage(SettingsKey.sttFeatureEnabled) private var sttFeatureEnabled = SettingsDefault.sttFeatureEnabled
     @AppStorage(SettingsKey.webSearchEnabled) private var webSearchEnabled = SettingsDefault.webSearchEnabled
     @AppStorage(SettingsKey.toolsFeatureEnabled) private var toolsFeatureEnabled = SettingsDefault.toolsFeatureEnabled
+    @AppStorage(SettingsKey.toolsAllowLocalNetwork) private var toolsAllowLocalNetwork = SettingsDefault.toolsAllowLocalNetwork
     @AppStorage(SettingsKey.dictationVoiceProcessing) private var voiceProcessing = SettingsDefault.dictationVoiceProcessing
 
     @State private var viewModel = ConversationController()
@@ -678,9 +679,24 @@ struct ChatView: View {
         let settings = SessionToolSettings(enabled: true,
                                            allowedTools: Set(session.allowedToolNames),
                                            approvedForSession: Set(session.approvedToolNames))
-        return ToolContext(registry: ToolRegistry(tools: ToolRegistry.builtInTools),
+        return ToolContext(registry: ToolRegistry(tools: configuredTools),
                            settings: settings,
                            confirm: toolApproval.handler)
+    }
+
+    /// The runnable tool instances with real config: the web-search provider + keys, the
+    /// local-network policy for fetch_url, and — only when the user allow-listed it — a
+    /// Sendable snapshot of this chat's attachment chunks for retrieve_context.
+    private var configuredTools: [any AgentTool] {
+        var tools: [any AgentTool] = [
+            CurrentDateTimeTool(),
+            GetWeatherTool(),
+            WebSearchTool(config: WebSearchSettings.config()),
+            FetchURLTool(config: FetchURLConfig(allowLocalNetwork: toolsAllowLocalNetwork))
+        ]
+        let chunks = session.allowedToolNames.contains("retrieve_context") ? session.retrievableChunks() : []
+        tools.append(RetrieveContextTool(chunks: chunks))
+        return tools
     }
 
     /// Bridges the approval coordinator's pending request to a `sheet(item:)`; dismissing

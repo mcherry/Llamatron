@@ -22,6 +22,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.sttFeatureEnabled) private var sttFeatureEnabled = SettingsDefault.sttFeatureEnabled
     @AppStorage(SettingsKey.webSearchEnabled) private var webSearchEnabled = SettingsDefault.webSearchEnabled
     @AppStorage(SettingsKey.toolsFeatureEnabled) private var toolsFeatureEnabled = SettingsDefault.toolsFeatureEnabled
+    @AppStorage(SettingsKey.toolsAllowLocalNetwork) private var toolsAllowLocalNetwork = SettingsDefault.toolsAllowLocalNetwork
     @AppStorage(SettingsKey.searchProvider) private var searchProvider = WebSearch.ProviderKind.none.rawValue
     @AppStorage(SettingsKey.searxngURL) private var searxngURL = ""
     @AppStorage(SettingsKey.braveAPIKey) private var braveAPIKey = ""
@@ -192,7 +193,12 @@ struct SettingsView: View {
             }
             Section("Tools") {
                 Toggle("Enable tool calling", isOn: $toolsFeatureEnabled)
-                Text("Let capable models call local tools during a reply (e.g. the current date and time). Off by default. Tools run on your device, never on the server. Each chat opts in per tool in Session Settings, and anything past a pure calculation asks you to approve before it runs — the model proposes, you dispose.")
+                if toolsFeatureEnabled {
+                    Toggle("Allow fetching local & LAN addresses", isOn: $toolsAllowLocalNetwork)
+                    Text("Lets the fetch-a-page tool reach localhost and private addresses, e.g. to read a local server. Turn off to restrict it to public sites.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Let capable models call local tools during a reply — the clock, weather, web search, fetching a page, and searching this chat's attachments. Off by default. Tools run on your device, never on the server. Each chat opts in per tool in Session Settings, and anything past a pure calculation asks you to approve before it runs — the model proposes, you dispose.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Image Generation") {
