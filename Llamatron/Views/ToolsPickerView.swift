@@ -91,23 +91,34 @@ struct SessionToolsButton: View {
             showingPopover.toggle()
         } label: {
             Image(systemName: "wrench")
-                .font(.title3)
+                .font(.body)
                 .foregroundStyle(isActive ? Color.accentColor : .secondary)
         }
         .buttonStyle(.plain)
         .help(helpText)
         .popover(isPresented: $showingPopover, arrowEdge: .bottom) {
-            Form {
-                Section {
-                    ToolsPickerView(session: session)
-                } header: {
-                    Text("Tools for this chat")
-                } footer: {
-                    Text("A pure tool (like the clock) runs on its own; anything that reads local data or reaches the network asks you to approve first. Tools run on your device, never on the server.")
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Tools for this chat")
+                    .font(.headline)
+                    .padding(.horizontal)
+                    .padding(.top, 14)
+                    .padding(.bottom, 10)
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        ToolsPickerView(session: session)
+                    }
+                    .padding()
                 }
+                Divider()
+                Text("A pure tool (like the clock) runs on its own; anything that reads local data or reaches the network asks you first. Tools run on your device.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
             }
-            .formStyle(.grouped)
-            .frame(width: 340, height: 420)
+            .frame(width: 320, height: 440)
         }
     }
 
