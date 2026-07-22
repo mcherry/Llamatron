@@ -17,6 +17,9 @@ struct Composer: View {
     var onAttachFolder: (() -> Void)?
     var onAddWebSource: (() -> Void)?
     var onWebSearch: (() -> Void)?
+    /// An optional per-chat tools control (wrench + popover), shown among the input
+    /// buttons when tool calling is available for this session.
+    var toolsButton: AnyView?
     /// When set, a mic button toggles speech-to-text dictation into the field.
     var onMic: (() -> Void)?
     /// True while dictation is actively transcribing, for the mic button's state.
@@ -116,6 +119,9 @@ struct Composer: View {
                 }
                 if onAddWebSource != nil || onWebSearch != nil {
                     webButton
+                }
+                if let toolsButton {
+                    toolsButton
                 }
                 if onMic != nil {
                     micButton

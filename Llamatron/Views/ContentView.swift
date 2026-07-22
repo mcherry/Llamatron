@@ -12,6 +12,7 @@ struct ContentView: View {
     @AppStorage(SettingsKey.defaultBackend) private var defaultBackend = SettingsDefault.defaultBackend
     @AppStorage(SettingsKey.sessionPresets) private var sessionPresetsJSON = "[]"
     @AppStorage(SettingsKey.defaultPresetID) private var defaultPresetID = ""
+    @AppStorage(SettingsKey.toolsFeatureEnabled) private var toolsFeatureEnabled = SettingsDefault.toolsFeatureEnabled
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \ChatSession.updatedAt, order: .reverse) private var sessions: [ChatSession]
@@ -127,7 +128,22 @@ struct ContentView: View {
             session.modelName = backend == .ollama ? defaultModel : ""
             session.contextSize = defaultContextSize
         }
+        seedDefaultTools(session)
         return session
+    }
+
+    /// When tool calling is enabled app-wide, a new chat starts with the *pure* tools
+    /// (clock, render_graphic) already allowed — they auto-run and have no attack surface,
+    /// so the common case works without per-chat setup. Network/local tools stay opt-in
+    /// behind the confirmation gate. Only seeds an untouched session (respects a preset
+    /// that configured tools).
+    private func seedDefaultTools(_ session: ChatSession) {
+        guard toolsFeatureEnabled, session.backend.profile.supportsTools,
+              !session.toolsEnabled, session.allowedToolNames.isEmpty else { return }
+        session.toolsEnabled = true
+        session.allowedToolNames = ToolRegistry.builtInTools
+            .filter { $0.riskTier == .pure }
+            .map(\.name)
     }
 
     /// Creates a new session that copies an existing session's configuration (“new chat

@@ -210,6 +210,7 @@ struct ChatView: View {
                  onAttachFolder: { showingFolderImporter = true },
                  onAddWebSource: webSearchEnabled ? { showingAddWebSource = true } : nil,
                  onWebSearch: webSearchEnabled ? { showingWebSearch = true } : nil,
+                 toolsButton: toolsButtonView,
                  onMic: conversationActive ? nil : micAction,
                  isDictating: dictation.isListening,
                  dictationUnavailable: dictation.isUnavailable,
@@ -667,6 +668,14 @@ struct ChatView: View {
     private var selectedComfyTemplate: ComfyWorkflowTemplate? {
         guard ImageBackendKind(rawValue: imageBackendKind) == .comfyUI else { return nil }
         return ComfyTemplateLibrary.template(id: session.comfyTemplateID, in: comfyTemplatesJSON)
+    }
+
+    /// The composer's tools button, or nil when tool calling isn't available for this
+    /// session (feature off, or the backend can't do tools). It surfaces the per-chat tool
+    /// gate right where the user types, not only in Session Settings.
+    private var toolsButtonView: AnyView? {
+        guard toolsFeatureEnabled, session.backend.profile.supportsTools else { return nil }
+        return AnyView(SessionToolsButton(session: session))
     }
 
     /// The tool set + per-session policy + confirmation hook for this turn, or nil when the

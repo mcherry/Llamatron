@@ -707,72 +707,11 @@ struct SessionConfigView: View {
 
     private var toolsSection: some View {
         Section {
-            Toggle(isOn: $session.toolsEnabled) {
-                Label("Let the model use tools", systemImage: "wrench.and.screwdriver")
-            }
-            if session.toolsEnabled {
-                ForEach(ToolRegistry.builtInTools, id: \.name) { tool in
-                    Toggle(isOn: toolBinding(tool.name)) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text(tool.name)
-                                toolTierBadge(tool.riskTier)
-                            }
-                            Text(tool.description)
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
+            ToolsPickerView(session: session)
         } header: {
             Text("Tools")
         } footer: {
-            Text("Off by default. Each tool is opt-in. A pure tool (like the clock) runs on its own; anything that reads local data or reaches the network asks you to approve first. Tools run on your device, never on the server.")
-        }
-    }
-
-    /// Binds a tool's allow-list membership. Turning a tool off also revokes any prior
-    /// "approve for chat" so it must be re-confirmed if re-enabled.
-    private func toolBinding(_ name: String) -> Binding<Bool> {
-        Binding(
-            get: { session.allowedToolNames.contains(name) },
-            set: { isOn in
-                if isOn {
-                    if !session.allowedToolNames.contains(name) {
-                        session.allowedToolNames.append(name)
-                    }
-                } else {
-                    session.allowedToolNames.removeAll { $0 == name }
-                    session.approvedToolNames.removeAll { $0 == name }
-                }
-            })
-    }
-
-    @ViewBuilder
-    private func toolTierBadge(_ tier: ToolRiskTier) -> some View {
-        Text(toolTierLabel(tier))
-            .font(.caption2.weight(.medium))
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .background(toolTierColor(tier).opacity(0.18), in: Capsule())
-            .foregroundStyle(toolTierColor(tier))
-    }
-
-    private func toolTierLabel(_ tier: ToolRiskTier) -> String {
-        switch tier {
-        case .pure: return "pure"
-        case .readLocal: return "local"
-        case .network: return "network"
-        case .mutating: return "writes"
-        }
-    }
-
-    private func toolTierColor(_ tier: ToolRiskTier) -> Color {
-        switch tier {
-        case .pure: return .green
-        case .readLocal: return .blue
-        case .network: return .orange
-        case .mutating: return .red
+            Text("Off by default. Each tool is opt-in. A pure tool (like the clock) runs on its own; anything that reads local data or reaches the network asks you to approve first. Tools run on your device, never on the server. You can also toggle these from the wrench button in the chat.")
         }
     }
 
