@@ -36,6 +36,9 @@ struct MessageInspectorView: View {
                     if !message.retrievedChunks.isEmpty {
                         retrievalSection
                     }
+                    if !message.orderedToolCallRecords.isEmpty {
+                        toolCallsSection
+                    }
                 }
                 .padding()
             }
@@ -154,6 +157,76 @@ struct MessageInspectorView: View {
     }
 
     // MARK: - Retrieval
+
+    // MARK: - Tools
+
+    private var toolCallsSection: some View {
+        section("Tool Calls", systemImage: "wrench.and.screwdriver") {
+            let records = message.orderedToolCallRecords
+            VStack(alignment: .leading, spacing: 10) {
+                Text("\(records.count) tool call\(records.count == 1 ? "" : "s") the model made this turn.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(records) { record in
+                    toolRecordRow(record)
+                }
+            }
+        }
+    }
+
+    private func toolRecordRow(_ record: ToolCallRecord) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(record.toolName)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                decisionBadge(record.decision)
+                Spacer()
+                if let seconds = record.durationSeconds {
+                    Text(String(format: "%.2fs", seconds))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if !record.arguments.isEmpty && record.arguments != "{}" {
+                Text(record.arguments)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+            Text(record.result)
+                .font(.caption)
+                .foregroundStyle(record.isError ? Color.orange : Color.secondary)
+                .lineLimit(4)
+                .textSelection(.enabled)
+        }
+        .padding(8)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private func decisionBadge(_ decision: String) -> some View {
+        let style = decisionStyle(decision)
+        Text(style.label)
+            .font(.caption2.weight(.medium))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(style.color.opacity(0.18), in: Capsule())
+            .foregroundStyle(style.color)
+    }
+
+    private func decisionStyle(_ decision: String) -> (label: String, color: Color) {
+        switch decision {
+        case "auto":      return ("auto-run", .green)
+        case "confirmed": return ("confirmed", .blue)
+        case "approved":  return ("approved", .blue)
+        case "denied":    return ("denied", .red)
+        case "invalid":   return ("invalid args", .orange)
+        case "unknown":   return ("unknown tool", .orange)
+        default:          return (decision, .gray)
+        }
+    }
 
     private var retrievalSection: some View {
         section("Retrieved Context", systemImage: "doc.text.magnifyingglass") {

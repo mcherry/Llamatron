@@ -35,11 +35,13 @@ struct ChatView: View {
     @AppStorage(SettingsKey.ttsFeatureEnabled) private var ttsFeatureEnabled = SettingsDefault.ttsFeatureEnabled
     @AppStorage(SettingsKey.sttFeatureEnabled) private var sttFeatureEnabled = SettingsDefault.sttFeatureEnabled
     @AppStorage(SettingsKey.webSearchEnabled) private var webSearchEnabled = SettingsDefault.webSearchEnabled
+    @AppStorage(SettingsKey.toolsFeatureEnabled) private var toolsFeatureEnabled = SettingsDefault.toolsFeatureEnabled
     @AppStorage(SettingsKey.dictationVoiceProcessing) private var voiceProcessing = SettingsDefault.dictationVoiceProcessing
 
     @State private var viewModel = ConversationController()
     @State private var speech = SpeechController()
     @State private var dictation = DictationController()
+    @State private var toolApproval = ToolApprovalCoordinator()
     /// The draft text captured when dictation started, so the transcript appends to it.
     @State private var dictationBase = ""
     /// True while always-on conversation mode is active for this session.
@@ -112,6 +114,15 @@ struct ChatView: View {
         .sheet(isPresented: $showingWebSearch) {
             WebSearchView { title, content in
                 addWebSource(title: title, content: content)
+            }
+        }
+        .sheet(item: toolApprovalBinding) { request in
+            ToolConfirmationView(request: request) { outcome in
+                if outcome == .approvedForSession,
+                   !session.approvedToolNames.contains(request.toolName) {
+                    session.approvedToolNames.append(request.toolName)
+                }
+                toolApproval.respond(outcome)
             }
         }
         .fileImporter(isPresented: $showingImporter,
@@ -538,6 +549,7 @@ struct ChatView: View {
                        imageServerURL: imageServerURL,
                        imageBackendKind: imageBackendKind,
                        imageWorkflowTemplate: selectedComfyTemplate,
+                       toolContext: toolContext,
                        modelContext: modelContext)
     }
 
@@ -654,6 +666,28 @@ struct ChatView: View {
     private var selectedComfyTemplate: ComfyWorkflowTemplate? {
         guard ImageBackendKind(rawValue: imageBackendKind) == .comfyUI else { return nil }
         return ComfyTemplateLibrary.template(id: session.comfyTemplateID, in: comfyTemplatesJSON)
+    }
+
+    /// The tool set + per-session policy + confirmation hook for this turn, or nil when the
+    /// feature is off, the backend can't do tools, or the session hasn't opted in. Only the
+    /// allow-listed tools are ever advertised; higher-risk tiers route through the sheet.
+    private var toolContext: ToolContext? {
+        guard toolsFeatureEnabled, session.backend.profile.supportsTools, session.toolsEnabled else {
+            return nil
+        }
+        let settings = SessionToolSettings(enabled: true,
+                                           allowedTools: Set(session.allowedToolNames),
+                                           approvedForSession: Set(session.approvedToolNames))
+        return ToolContext(registry: ToolRegistry(tools: ToolRegistry.builtInTools),
+                           settings: settings,
+                           confirm: toolApproval.handler)
+    }
+
+    /// Bridges the approval coordinator's pending request to a `sheet(item:)`; dismissing
+    /// the sheet without a choice resolves as a denial.
+    private var toolApprovalBinding: Binding<ToolConfirmationRequest?> {
+        Binding(get: { toolApproval.pending },
+                set: { newValue in if newValue == nil { toolApproval.respond(.denied) } })
     }
 
     private func regenerate(_ message: ChatMessage) {

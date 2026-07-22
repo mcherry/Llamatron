@@ -34,6 +34,8 @@ enum SettingsKey {
     static let ttsFeatureEnabled = "ttsFeatureEnabled"
     static let sttFeatureEnabled = "sttFeatureEnabled"
     static let webSearchEnabled = "webSearchEnabled"
+    /// Tool calling (let the model call local tools). Off by default — security-sensitive.
+    static let toolsFeatureEnabled = "toolsFeatureEnabled"
 
     // Web search providers (used by the web-source search sheet).
     static let searchProvider = "searchProvider"
@@ -97,6 +99,8 @@ enum SettingsDefault {
     static let ttsFeatureEnabled = true
     static let sttFeatureEnabled = true
     static let webSearchEnabled = true
+    /// Tool calling stays off until the user explicitly turns it on (security posture).
+    static let toolsFeatureEnabled = false
     static let imageServerURL = "http://localhost:9000"
     static let imageSteps = 20
     static let imageSize = 640

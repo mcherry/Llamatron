@@ -21,6 +21,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.ttsFeatureEnabled) private var ttsFeatureEnabled = SettingsDefault.ttsFeatureEnabled
     @AppStorage(SettingsKey.sttFeatureEnabled) private var sttFeatureEnabled = SettingsDefault.sttFeatureEnabled
     @AppStorage(SettingsKey.webSearchEnabled) private var webSearchEnabled = SettingsDefault.webSearchEnabled
+    @AppStorage(SettingsKey.toolsFeatureEnabled) private var toolsFeatureEnabled = SettingsDefault.toolsFeatureEnabled
     @AppStorage(SettingsKey.searchProvider) private var searchProvider = WebSearch.ProviderKind.none.rawValue
     @AppStorage(SettingsKey.searxngURL) private var searxngURL = ""
     @AppStorage(SettingsKey.braveAPIKey) private var braveAPIKey = ""
@@ -188,6 +189,11 @@ struct SettingsView: View {
                 Text("Set up API keys and choose an engine in Manage Providers. Search uses sanctioned APIs only (never scraping); result pages are fetched politely — robots.txt and per-host rate limits apply.")
                     .font(.caption).foregroundStyle(.secondary)
                 }
+            }
+            Section("Tools") {
+                Toggle("Enable tool calling", isOn: $toolsFeatureEnabled)
+                Text("Let capable models call local tools during a reply (e.g. the current date and time). Off by default. Tools run on your device, never on the server. Each chat opts in per tool in Session Settings, and anything past a pure calculation asks you to approve before it runs — the model proposes, you dispose.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Image Generation") {
                 Toggle("Enable image generation", isOn: $imageGenEnabled)
