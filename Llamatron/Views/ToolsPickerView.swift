@@ -80,15 +80,15 @@ struct ToolTierBadge: View {
 }
 
 /// The composer's tools affordance: a wrench button that reflects how many tools are on
-/// for this chat and opens a popover to toggle them — putting the per-chat tool gate right
-/// where the user types, instead of only inside Session Settings.
+/// for this chat and opens the tools list to toggle them — putting the per-chat tool gate
+/// right where the user types, instead of only inside Session Settings.
 struct SessionToolsButton: View {
     @Bindable var session: ChatSession
-    @State private var showingPopover = false
+    @State private var showingSheet = false
 
     var body: some View {
         Button {
-            showingPopover.toggle()
+            showingSheet = true
         } label: {
             Image(systemName: "wrench")
                 .font(.body)
@@ -96,30 +96,8 @@ struct SessionToolsButton: View {
         }
         .buttonStyle(.plain)
         .help(helpText)
-        .popover(isPresented: $showingPopover, arrowEdge: .bottom) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Tools for this chat")
-                    .font(.headline)
-                    .padding(.horizontal)
-                    .padding(.top, 14)
-                    .padding(.bottom, 10)
-                Divider()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        ToolsPickerView(session: session)
-                    }
-                    .toggleStyle(.switch)
-                    .padding()
-                }
-                Divider()
-                Text("A pure tool (like the clock) runs on its own; anything that reads local data or reaches the network asks you first. Tools run on your device.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
-            }
-            .frame(width: 320, height: 440)
+        .sheet(isPresented: $showingSheet) {
+            ToolsPickerSheet(session: session)
         }
     }
 
@@ -130,5 +108,42 @@ struct SessionToolsButton: View {
         guard session.toolsEnabled else { return "Tools — off for this chat" }
         let count = session.allowedToolNames.count
         return count == 0 ? "Tools — none enabled yet" : "Tools — \(count) enabled"
+    }
+}
+
+/// The tools list presented from the composer wrench. A sheet hosting a grouped `Form`
+/// (mirroring Session Settings) so the switches render as normal native controls — a
+/// `.popover` mangled them on macOS (gigantic, misaligned, wrong initial state).
+private struct ToolsPickerSheet: View {
+    @Bindable var session: ChatSession
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Tools for this chat").font(.headline)
+                    Text("Choose what the model may use").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+
+            Divider()
+
+            Form {
+                Section {
+                    ToolsPickerView(session: session)
+                } footer: {
+                    Text("A pure tool (like the clock) runs on its own; anything that reads local data or reaches the network asks you to approve first. Tools run on your device, never on the server.")
+                }
+            }
+            .formStyle(.grouped)
+        }
+        #if os(macOS)
+        .frame(width: 460, height: 560)
+        #endif
     }
 }
