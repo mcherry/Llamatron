@@ -18,7 +18,7 @@ struct WebSearchView: View {
     @AppStorage(SettingsKey.exaAPIKey) private var exaAPIKey = ""
     @AppStorage(SettingsKey.linkupAPIKey) private var linkupAPIKey = ""
     @AppStorage(SettingsKey.tinyfishAPIKey) private var tinyfishAPIKey = ""
-    @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
+    @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = ""
     @AppStorage(SettingsKey.metaDisabledProviders) private var metaDisabledProviders = ""
     @AppStorage(SettingsKey.metaMode) private var metaMode = WebSearch.MetaSearchMode.comprehensive.rawValue
     @AppStorage(SettingsKey.searchUsage) private var searchUsageJSON = ""
@@ -119,7 +119,7 @@ struct WebSearchView: View {
         ContentUnavailableView {
             Label("No search provider", systemImage: "magnifyingglass")
         } description: {
-            Text("Set up a provider in **Settings → Web Search** — Wikipedia or a self-hosted SearXNG instance (no account), the independent Marginalia engine, or a Brave / Tavily API key.")
+            Text("Set up a provider in **Settings → Web Search** — Wikipedia or a self-hosted SearXNG instance (no account), or an API key for Brave, Tavily, Marginalia, and more.")
         }
         .frame(maxHeight: .infinity)
     }

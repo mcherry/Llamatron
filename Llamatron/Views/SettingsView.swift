@@ -28,7 +28,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.exaAPIKey) private var exaAPIKey = ""
     @AppStorage(SettingsKey.linkupAPIKey) private var linkupAPIKey = ""
     @AppStorage(SettingsKey.tinyfishAPIKey) private var tinyfishAPIKey = ""
-    @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = "public"
+    @AppStorage(SettingsKey.marginaliaAPIKey) private var marginaliaAPIKey = ""
     @AppStorage(SettingsKey.metaDisabledProviders) private var metaDisabledProviders = ""
     @AppStorage(SettingsKey.metaMode) private var metaMode = WebSearch.MetaSearchMode.comprehensive.rawValue
 
