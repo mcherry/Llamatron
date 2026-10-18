@@ -5,6 +5,7 @@ import AppKit
 #else
 import UIKit
 #endif
+import QuickLook
 import UniformTypeIdentifiers
 
 /// One turn in the transcript. User turns are right-aligned and hug their content;
@@ -167,7 +168,7 @@ struct MessageRow: View {
                     thinkingDisclosure
                 }
                 if let data = message.generatedImageData, let nsImage = PlatformImage(data: data) {
-                    generatedImage(nsImage)
+                    generatedImage(nsImage, data: data)
                 }
                 if isHoldingForNarration {
                     narrationPlaceholder
@@ -291,20 +292,21 @@ struct MessageRow: View {
     }
 
     /// The reply cut where tool graphics were made, so each graphic follows the text that led to it.
-    private var replySegments: [(text: String, images: [PlatformImage])] {
+    private var replySegments: [(text: String, images: [ToolGraphic])] {
         let text = displayedContent
-        var segments: [(text: String, images: [PlatformImage])] = []
+        var segments: [(text: String, images: [ToolGraphic])] = []
         var cursor = text.startIndex
         for record in message.orderedToolCallRecords {
-            guard let image = record.imageData.flatMap({ PlatformImage(data: $0) }) else { continue }
+            guard let data = record.imageData, let image = PlatformImage(data: data) else { continue }
+            let graphic = ToolGraphic(id: record.id, data: data, image: image)
             // Unknown positions, and those past the text revealed so far, go after the text.
             let cut = record.contentOffset
                 .flatMap { text.index(text.startIndex, offsetBy: $0, limitedBy: text.endIndex) }
                 .map { max($0, cursor) } ?? text.endIndex
             if cut == cursor, !segments.isEmpty {
-                segments[segments.count - 1].images.append(image)
+                segments[segments.count - 1].images.append(graphic)
             } else {
-                segments.append((String(text[cursor..<cut]).trimmingCharacters(in: .newlines), [image]))
+                segments.append((String(text[cursor..<cut]).trimmingCharacters(in: .newlines), [graphic]))
                 cursor = cut
             }
         }
@@ -314,16 +316,18 @@ struct MessageRow: View {
 
     /// Graphics produced by tools (e.g. render_graphic).
     @ViewBuilder
-    private func toolImages(_ images: [PlatformImage]) -> some View {
+    private func toolImages(_ images: [ToolGraphic]) -> some View {
         if !images.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(images.enumerated()), id: \.offset) { _, image in
-                    Image(platformImage: image)
+                ForEach(images, id: \.id) { graphic in
+                    Image(platformImage: graphic.image)
                         .resizable()
                         .scaledToFit()
-                        .frame(maxWidth: Self.displayWidth(for: image.size))
+                        .frame(maxWidth: Self.displayWidth(for: graphic.image.size))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
+                        .modifier(ImageActions(id: graphic.id, data: graphic.data, image: graphic.image,
+                                               fileName: "Graphic.png"))
                 }
             }
         }
@@ -336,15 +340,16 @@ struct MessageRow: View {
     }
 
     /// A generated image reply with hover actions to save or copy it.
-    private func generatedImage(_ nsImage: PlatformImage) -> some View {
+    private func generatedImage(_ nsImage: PlatformImage, data: Data) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Image(platformImage: nsImage)
                 .resizable()
                 .scaledToFit()
                 .frame(maxWidth: Self.displayWidth(for: nsImage.size))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .modifier(ImageActions(id: message.id, data: data, image: nsImage, fileName: "Image.png"))
             HStack(spacing: 12) {
-                Button { saveGeneratedImage() } label: {
+                Button { Self.saveImage(data, named: "Image.png") } label: {
                     Label("Save", systemImage: "square.and.arrow.down")
                 }
                 Button { Pasteboard.copy(image: nsImage) } label: {
@@ -358,23 +363,34 @@ struct MessageRow: View {
         }
     }
 
-    /// Writes the generated PNG to a user-chosen location.
-    private func saveGeneratedImage() {
-        guard let data = message.generatedImageData else { return }
+    /// Saves PNG bytes where the user chooses: a save panel on macOS, the share sheet on iOS.
+    fileprivate static func saveImage(_ data: Data, named name: String) {
         #if os(macOS)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType.png]
-        panel.nameFieldStringValue = "image.png"
+        panel.nameFieldStringValue = name
         if panel.runModal() == .OK, let url = panel.url {
             try? data.write(to: url)
         }
         #else
-        // iOS: write a temp PNG and offer it through the share sheet.
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("image.png")
-        if (try? data.write(to: url)) != nil {
+        if let url = temporaryFile(for: data, id: UUID(), named: name) {
             PlatformShare.present([url])
         }
         #endif
+    }
+
+    /// Writes `data` to a temporary file under its own folder, so Quick Look and the share sheet
+    /// show `name` rather than a random one.
+    fileprivate static func temporaryFile(for data: Data, id: UUID, named name: String) -> URL? {
+        let folder = FileManager.default.temporaryDirectory.appending(path: id.uuidString, directoryHint: .isDirectory)
+        let url = folder.appending(path: name)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try data.write(to: url)
+            return url
+        } catch {
+            return nil
+        }
     }
 
     private var captionText: String {
@@ -399,5 +415,43 @@ struct MessageRow: View {
 
     private var bubbleColor: Color {
         isUser ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.10)
+    }
+}
+
+/// A graphic a tool produced, with its PNG bytes for copying and saving.
+private struct ToolGraphic {
+    let id: UUID
+    let data: Data
+    let image: PlatformImage
+}
+
+/// Click (tap on iPad) opens the image full size in Quick Look; the context menu (right-click,
+/// long-press) previews, copies, or saves it.
+private struct ImageActions: ViewModifier {
+    let id: UUID
+    let data: Data
+    let image: PlatformImage
+    let fileName: String
+    @State private var previewURL: URL?
+
+    func body(content: Content) -> some View {
+        content
+            .onTapGesture { preview() }
+            #if os(macOS)
+            .pointerStyle(.link)
+            #endif
+            .help("Click to view full size. Right-click to copy or save.")
+            .contextMenu {
+                Button("Quick Look", systemImage: "eye") { preview() }
+                Button("Copy Image", systemImage: "doc.on.doc") { Pasteboard.copy(image: image) }
+                Button("Save Image…", systemImage: "square.and.arrow.down") {
+                    MessageRow.saveImage(data, named: fileName)
+                }
+            }
+            .quickLookPreview($previewURL)
+    }
+
+    private func preview() {
+        previewURL = MessageRow.temporaryFile(for: data, id: id, named: fileName)
     }
 }

@@ -265,7 +265,7 @@ struct MessageInspectorView: View {
     private var retrievalSection: some View {
         section("Retrieved Context", systemImage: "doc.text.magnifyingglass") {
             VStack(alignment: .leading, spacing: 10) {
-                Text("\(message.retrievedChunks.count) chunks used, ranked by similarity to the prompt.")
+                Text("\(message.retrievedChunks.count) chunks used, ranked by relevance to the prompt (keywords and meaning).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 ForEach(message.retrievedChunks.sorted { $0.score > $1.score }) { chunk in
