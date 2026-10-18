@@ -174,6 +174,8 @@ struct MessageRow: View {
                 } else if !displayedContent.isEmpty {
                     MarkdownView(text: displayedContent, renderDiagrams: !isGenerating)
                         .textSelection(.enabled)
+                        // Stretchy parts (a quote's bar) would otherwise let the stack shift height to the images below.
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else if isGenerating && message.thinking.isEmpty && message.generatedImageData == nil {
                     ProgressView()
@@ -294,12 +296,18 @@ struct MessageRow: View {
                     Image(platformImage: image)
                         .resizable()
                         .scaledToFit()
-                        .frame(maxWidth: 512, maxHeight: 512)
+                        .frame(maxWidth: Self.displayWidth(for: image.size))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
                 }
             }
         }
+    }
+
+    /// Longest side capped at 512pt, never upscaled. Width-only, so the aspect ratio fixes the height.
+    private static func displayWidth(for size: CGSize) -> CGFloat {
+        guard size.width > 0, size.height > 0 else { return 512 }
+        return size.width * min(1, 512 / max(size.width, size.height))
     }
 
     /// A generated image reply with hover actions to save or copy it.
@@ -308,7 +316,7 @@ struct MessageRow: View {
             Image(platformImage: nsImage)
                 .resizable()
                 .scaledToFit()
-                .frame(maxWidth: 512, maxHeight: 512)
+                .frame(maxWidth: Self.displayWidth(for: nsImage.size))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             HStack(spacing: 12) {
                 Button { saveGeneratedImage() } label: {
