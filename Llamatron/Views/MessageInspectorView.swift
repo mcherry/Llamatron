@@ -42,9 +42,6 @@ struct MessageInspectorView: View {
                 }
                 .padding()
             }
-            // Hug the metadata content so the payload below can fill the rest of the
-            // panel instead of leaving a gap.
-            .fixedSize(horizontal: false, vertical: true)
 
             if let payload = message.requestPayload {
                 Divider()
@@ -65,8 +62,31 @@ struct MessageInspectorView: View {
                 metricRow("Speed", message.tokensPerSecond.map { String(format: "%.1f tok/s", $0) })
                 metricRow("Prompt tokens", message.promptTokens.map { $0.formatted() })
                 metricRow("Response tokens", message.evalTokens.map { $0.formatted() })
+                if let timings = message.timings {
+                    metricRow("Prompt processing", prefillLabel(timings))
+                    metricRow("Prompt cache", cacheLabel(timings))
+                }
+                if message.toolRounds > 0 {
+                    metricRow("Tool rounds", "\(message.toolRounds)")
+                }
             }
         }
+    }
+
+    /// The server's own prefill numbers, e.g. "1.2s · 850 tok/s".
+    private func prefillLabel(_ timings: TurnTimings) -> String? {
+        let parts = [
+            timings.promptMilliseconds.map { $0 < 1000 ? "\(Int($0)) ms" : String(format: "%.1fs", $0 / 1000) },
+            timings.promptTokensPerSecond.map { String(format: "%.0f tok/s", $0) }
+        ].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// e.g. "3,900 of 4,100 tokens reused (95%)".
+    private func cacheLabel(_ timings: TurnTimings) -> String? {
+        guard let cached = timings.cachedTokens, let total = timings.totalPromptTokens,
+              let rate = timings.cacheHitRate else { return nil }
+        return "\(cached.formatted()) of \(total.formatted()) tokens reused (\(Int((rate * 100).rounded()))%)"
     }
 
     private func metricRow(_ label: String, _ value: String?) -> some View {
@@ -167,6 +187,13 @@ struct MessageInspectorView: View {
                 Text("\(records.count) tool call\(records.count == 1 ? "" : "s") the model made this turn.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if message.recoveredToolCalls > 0 {
+                    let count = message.recoveredToolCalls
+                    Label("\(count) call\(count == 1 ? " was" : "s were") written as text and recovered — the server's chat template didn't convert \(count == 1 ? "it" : "them") into a tool call.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
                 ForEach(records) { record in
                     toolRecordRow(record)
                 }
@@ -310,7 +337,10 @@ struct MessageInspectorView: View {
                 .overlay(RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(Color.platformSeparator))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // The floor matters: this section is fully flexible and a GeometryReader
+            // accepts a zero height silently, so without it a metadata-heavy turn
+            // (tool calls + retrieval) squeezes the payload out of the panel entirely.
+            .frame(maxWidth: .infinity, minHeight: 200, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

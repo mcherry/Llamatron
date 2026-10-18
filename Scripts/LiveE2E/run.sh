@@ -1,27 +1,40 @@
 #!/bin/zsh
-# Compiles the Foundation-only Llamatron context-pipeline sources together with the
-# live driver and runs them against a real Ollama server (outside the app sandbox,
-# unlike the hosted XCTest process). Run from the repo root: ./Scripts/LiveE2E/run.sh
+# Builds the live driver against the LlamaEngine checkout beside this repo (or
+# $LLAMAENGINE_PATH) and runs it against a real Ollama server.
+# Run from anywhere: ./Scripts/LiveE2E/run.sh
 set -e
 cd "$(dirname "$0")/../.."
 
-SRC=(
-  Llamatron/Models/Role.swift
-  Llamatron/Services/OllamaDTOs.swift
-  Llamatron/Services/OllamaClient.swift
-  Llamatron/Services/ContextAssembler.swift
-  Llamatron/Support/TokenEstimator.swift
-  Llamatron/Support/TextChunker.swift
-  Llamatron/Support/Vector.swift
-  Llamatron/Support/TextTruncator.swift
-  Llamatron/Support/ContextStrategy.swift
-  Llamatron/Support/ContextBudget.swift
-  Llamatron/Support/ContextPlanner.swift
-  Scripts/LiveE2E/main.swift
-)
+ENGINE="${LLAMAENGINE_PATH:-$PWD/../LlamaEngine}"
+if [[ ! -f "$ENGINE/Package.swift" ]]; then
+  echo "LlamaEngine not found at $ENGINE — clone it beside this repo or set LLAMAENGINE_PATH."
+  exit 2
+fi
+ENGINE="${ENGINE:A}"
 
-BIN=/tmp/llamatron-e2e
-echo "Compiling live driver…"
-swiftc -O "${SRC[@]}" -o "$BIN"
+# A fixed scratch package so repeat runs build incrementally.
+PKG="${TMPDIR:-/tmp}/llamatron-live-e2e"
+mkdir -p "$PKG/Sources/LiveE2E"
+cp Scripts/LiveE2E/main.swift "$PKG/Sources/LiveE2E/main.swift"
+cat > "$PKG/Package.swift" <<EOF
+// swift-tools-version: 6.0
+import PackageDescription
+
+let package = Package(
+    name: "LiveE2E",
+    platforms: [.macOS(.v15)],
+    dependencies: [.package(path: "$ENGINE")],
+    targets: [
+        .executableTarget(
+            name: "LiveE2E",
+            dependencies: [.product(name: "LlamaEngine", package: "LlamaEngine")],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+    ]
+)
+EOF
+
+echo "Building live driver against $ENGINE…"
+swift build -c release --package-path "$PKG"
 echo "Running…"
-"$BIN"
+"$PKG/.build/release/LiveE2E"

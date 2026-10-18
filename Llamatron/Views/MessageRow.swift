@@ -284,7 +284,6 @@ struct MessageRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// A generated image reply with hover actions to save or copy it.
     /// Graphics produced by tools this turn (e.g. render_graphic), shown below the reply.
     @ViewBuilder
     private var toolImages: some View {
@@ -303,7 +302,9 @@ struct MessageRow: View {
         }
     }
 
-    private func generatedImage(_ nsImage: PlatformImage) -> some View {        VStack(alignment: .leading, spacing: 4) {
+    /// A generated image reply with hover actions to save or copy it.
+    private func generatedImage(_ nsImage: PlatformImage) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
             Image(platformImage: nsImage)
                 .resizable()
                 .scaledToFit()

@@ -29,6 +29,36 @@ enum WebSearchSettings {
     }
 }
 
+/// The folders the user granted the `write_file` tool, and the policy built from them.
+///
+/// The app is not sandboxed, so this is the only containment boundary. Roots are
+/// re-validated on every read rather than trusted from storage: a folder that was safe
+/// when granted may since have been deleted, or replaced with a symlink into somewhere
+/// it should not reach.
+enum FileAccessSettings {
+    /// Granted roots, stored as newline-separated absolute paths.
+    static func roots(from raw: String) -> [URL] {
+        raw.split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .compactMap { try? FilePathGuard.validateRoot(URL(fileURLWithPath: $0)) }
+    }
+
+    static func encode(_ roots: [URL]) -> String {
+        roots.map(\.path).joined(separator: "\n")
+    }
+
+    /// Builds the current `FileAccessPolicy` from persisted settings. Read at send time,
+    /// like `WebSearchSettings.config()`.
+    static func policy() -> FileAccessPolicy {
+        let defaults = UserDefaults.standard
+        let stored = defaults.string(forKey: SettingsKey.fileAccessRoots) ?? ""
+        let maxBytes = defaults.object(forKey: SettingsKey.fileAccessMaxBytes) as? Int
+            ?? SettingsDefault.fileAccessMaxBytes
+        return FileAccessPolicy(roots: roots(from: stored), maxBytes: maxBytes)
+    }
+}
+
 /// `@AppStorage` keys for app-wide settings, kept in one place to avoid typos.
 enum SettingsKey {
     static let serverURL = "serverURL"
@@ -56,6 +86,13 @@ enum SettingsKey {
     static let toolsFeatureEnabled = "toolsFeatureEnabled"
     /// Allow the fetch_url tool to reach local/LAN addresses (to test local servers).
     static let toolsAllowLocalNetwork = "toolsAllowLocalNetwork"
+    /// Newline-separated absolute paths the user granted the write_file tool. Empty means
+    /// no filesystem access at all.
+    static let fileAccessRoots = "fileAccessRoots"
+    /// Largest file write_file will write, in bytes.
+    static let fileAccessMaxBytes = "fileAccessMaxBytes"
+    /// Set once the pre-unsandboxing container preferences have been folded in.
+    static let didMigrateContainerPreferences = "didMigrateContainerPreferences"
 
     // Web search providers (used by the web-source search sheet).
     static let searchProvider = "searchProvider"
@@ -123,6 +160,9 @@ enum SettingsDefault {
     static let toolsFeatureEnabled = false
     /// fetch_url may reach local/LAN addresses by default (the deliberate relaxation).
     static let toolsAllowLocalNetwork = true
+    /// 1 MB. Large enough for scripts and source files, small enough that a runaway
+    /// loop cannot fill a disk.
+    static let fileAccessMaxBytes = 1_048_576
     static let imageServerURL = "http://localhost:9000"
     static let imageSteps = 20
     static let imageSize = 640

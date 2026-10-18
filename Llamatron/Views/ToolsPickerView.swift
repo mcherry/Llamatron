@@ -4,17 +4,35 @@ import LlamaEngine
 
 /// The per-chat tool controls: a master "let the model use tools" switch plus a per-tool
 /// allow-list with risk-tier badges. Emits bare rows (no surrounding container) so it can
-/// be dropped into the Session Settings form *and* the composer's tools popover, keeping
+/// be dropped into the Session Settings form *and* the composer's tools sheet, keeping
 /// one source of truth for the toggles.
 struct ToolsPickerView: View {
     @Bindable var session: ChatSession
+
+    /// How each tier is gated, for the footers of both hosts.
+    static var approvalSummary: String {
+        #if os(macOS)
+        "A pure tool (like the clock) runs on its own; anything that reads local data or reaches the network asks you to approve first, and writing a file asks every time."
+        #else
+        "A pure tool (like the clock) runs on its own; anything that reads local data or reaches the network asks you to approve first."
+        #endif
+    }
+
+    /// write_file needs the unsandboxed Mac app; iPadOS can't reach a granted folder.
+    private static var availableTools: [any AgentTool] {
+        #if os(macOS)
+        ToolRegistry.builtInTools
+        #else
+        ToolRegistry.builtInTools.filter { !($0 is WriteFileTool) }
+        #endif
+    }
 
     var body: some View {
         Toggle(isOn: $session.toolsEnabled) {
             Label("Let the model use tools", systemImage: "wrench.and.screwdriver")
         }
         if session.toolsEnabled {
-            ForEach(ToolRegistry.builtInTools, id: \.name) { tool in
+            ForEach(Self.availableTools, id: \.name) { tool in
                 Toggle(isOn: toolBinding(tool.name)) {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
@@ -137,7 +155,7 @@ private struct ToolsPickerSheet: View {
                 Section {
                     ToolsPickerView(session: session)
                 } footer: {
-                    Text("A pure tool (like the clock) runs on its own; anything that reads local data or reaches the network asks you to approve first. Tools run on your device, never on the server.")
+                    Text(ToolsPickerView.approvalSummary + " Tools run on your device, never on the server.")
                 }
             }
             .formStyle(.grouped)

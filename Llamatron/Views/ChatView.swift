@@ -3,7 +3,6 @@ import LlamaEngineStore
 import LlamaEngine
 import SwiftData
 import UniformTypeIdentifiers
-import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 #else
@@ -69,6 +68,11 @@ struct ChatView: View {
     @FocusState private var titleFocused: Bool
 
     private let bottomAnchor = "bottom-anchor"
+
+    private struct ScrollTail: Equatable {
+        var contentHeight: CGFloat
+        var isAtBottom: Bool
+    }
 
     private var visibleMessages: [ChatMessage] {
         session.orderedMessages.filter { $0.role != .system }
@@ -337,6 +341,15 @@ struct ChatView: View {
                 // hidden below the fold.
                 guard !streaming else { return }
                 DispatchQueue.main.async {
+                    proxy.scrollTo(bottomAnchor, anchor: .bottom)
+                }
+            }
+            .onScrollGeometryChange(for: ScrollTail.self) { geometry in
+                ScrollTail(contentHeight: geometry.contentSize.height,
+                           isAtBottom: geometry.visibleRect.maxY >= geometry.contentSize.height - 40)
+            } action: { old, new in
+                // Growth after the last pin (a diagram finishing its render) would otherwise strand the view above the tail.
+                if old.isAtBottom, new.contentHeight > old.contentHeight {
                     proxy.scrollTo(bottomAnchor, anchor: .bottom)
                 }
             }
@@ -704,6 +717,13 @@ struct ChatView: View {
             RenderGraphicTool(),
             FetchURLTool(config: FetchURLConfig(allowLocalNetwork: toolsAllowLocalNetwork))
         ]
+        // macOS only. write_file depends on the app not being sandboxed, and iOS does not
+        // allow opting out — reaching a folder there needs security-scoped bookmarks, which
+        // this policy does not implement. Not advertising it beats advertising a tool whose
+        // every call would fail.
+        #if os(macOS)
+        tools.append(WriteFileTool(policy: FileAccessSettings.policy()))
+        #endif
         let chunks = session.allowedToolNames.contains("retrieve_context") ? session.retrievableChunks() : []
         tools.append(RetrieveContextTool(chunks: chunks))
         return tools
@@ -882,7 +902,8 @@ struct ChatView: View {
 
     /// Stores a fetched web page or pasted note as a retrievable text attachment, so it
     /// rides the existing retrieval pipeline like any other attached file.
-    private func addWebSource(title: String, content: String) {        Task { @MainActor in
+    private func addWebSource(title: String, content: String) {
+        Task { @MainActor in
             indexingProgress = 0
             defer { indexingProgress = nil }
             await AttachmentLoader.makeTextAttachment(name: title.isEmpty ? "Source" : title,

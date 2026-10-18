@@ -1,14 +1,10 @@
 import Foundation
+import LlamaEngine
 
-// Standalone live end-to-end driver for the Llamatron context pipeline. It compiles
-// the Foundation-only production sources (OllamaClient, ContextAssembler, TextChunker,
-// ContextPlanner, …) together with this file and runs them against a real Ollama
-// server — outside the app sandbox, so it can reach a LAN server that the hosted
-// XCTest process cannot.
-//
-// Build & run (see Scripts/LiveE2E/run.sh):
-//   swiftc -O <production .swift files> Scripts/LiveE2E/main.swift -o /tmp/llamatron-e2e
-//   /tmp/llamatron-e2e
+// Standalone live end-to-end driver for the LlamaEngine context pipeline (OllamaClient,
+// ContextAssembler, TextChunker, ContextPlanner, …) against a real Ollama server.
+// Build & run with Scripts/LiveE2E/run.sh, which compiles it against the LlamaEngine
+// checkout beside this repo.
 
 func envOr(_ key: String, _ fallback: String) -> String {
     let v = ProcessInfo.processInfo.environment[key]
@@ -17,7 +13,6 @@ func envOr(_ key: String, _ fallback: String) -> String {
 
 let server = envOr("LLAMATRON_SERVER", "http://localhost:11434")
 let chatModel = envOr("LLAMATRON_CHAT_MODEL", "qwen-14b")
-let embeddingModel = envOr("LLAMATRON_EMBED_MODEL", "nomic-embed-text")
 let notesPath = envOr("LLAMATRON_NOTES",
                       FileManager.default.currentDirectoryPath + "/Scripts/LiveE2E/notes.md")
 
@@ -55,7 +50,7 @@ func answer(context: String, question: String) async throws -> String {
 do {
     line()
     print("Llamatron live end-to-end · server \(server)")
-    print("chat=\(chatModel)  embed=\(embeddingModel)")
+    print("chat=\(chatModel)  embed=on-device")
     line()
 
     // 1) Connectivity.
@@ -74,7 +69,7 @@ do {
     let contentTokens = chunks.reduce(0) { $0 + TokenEstimator.estimate($1.text) }
     print("Estimated content size: \(contentTokens) tokens")
 
-    let assembler = ContextAssembler(client: client, chatModel: chatModel, embeddingModel: embeddingModel)
+    let assembler = ContextAssembler(client: client, embedder: AppleEmbedder(), chatModel: chatModel)
 
     // 3) Auto planner: too big for a tight budget → retrieval first.
     line(); print("AUTO PLAN (tight budget)")

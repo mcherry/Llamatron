@@ -23,6 +23,8 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.webSearchEnabled) private var webSearchEnabled = SettingsDefault.webSearchEnabled
     @AppStorage(SettingsKey.toolsFeatureEnabled) private var toolsFeatureEnabled = SettingsDefault.toolsFeatureEnabled
     @AppStorage(SettingsKey.toolsAllowLocalNetwork) private var toolsAllowLocalNetwork = SettingsDefault.toolsAllowLocalNetwork
+    @AppStorage(SettingsKey.fileAccessRoots) private var fileAccessRoots = ""
+    @State private var fileAccessError: String?
     @AppStorage(SettingsKey.searchProvider) private var searchProvider = WebSearch.ProviderKind.none.rawValue
     @AppStorage(SettingsKey.searxngURL) private var searxngURL = ""
     @AppStorage(SettingsKey.braveAPIKey) private var braveAPIKey = ""
@@ -197,8 +199,11 @@ struct SettingsView: View {
                     Toggle("Allow fetching local & LAN addresses", isOn: $toolsAllowLocalNetwork)
                     Text("Lets the fetch-a-page tool reach localhost and private addresses, e.g. to read a local server. Turn off to restrict it to public sites.")
                         .font(.caption).foregroundStyle(.secondary)
+                    #if os(macOS)
+                    fileAccessControls
+                    #endif
                 }
-                Text("Let capable models call local tools during a reply — the clock, weather, web search, fetching a page, and searching this chat's attachments. Off by default. Tools run on your device, never on the server. Each chat opts in per tool in Session Settings, and anything past a pure calculation asks you to approve before it runs — the model proposes, you dispose.")
+                Text(toolsSummary)
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Image Generation") {
@@ -588,6 +593,86 @@ struct SettingsView: View {
             }
         }
     }
+
+    private var toolsSummary: String {
+        #if os(macOS)
+        let tools = "the clock, weather, web search, fetching a page, drawing a graphic, searching this chat's attachments, and writing files into folders you grant"
+        #else
+        let tools = "the clock, weather, web search, fetching a page, drawing a graphic, and searching this chat's attachments"
+        #endif
+        return "Let capable models call local tools during a reply — \(tools). Off by default. Tools run on your device, never on the server. Each chat opts in per tool in Session Settings, and anything past a pure calculation asks you to approve before it runs — the model proposes, you dispose."
+    }
+
+    #if os(macOS)
+    /// Folders `write_file` may write into. Empty means it can write nothing — the tool
+    /// fails closed rather than falling back to some default location.
+    @ViewBuilder
+    private var fileAccessControls: some View {
+        let roots = FileAccessSettings.roots(from: fileAccessRoots)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Folders the model may write to").font(.callout)
+                Spacer()
+                Button("Add Folder…") { addFileAccessRoot() }
+            }
+            if roots.isEmpty {
+                Text("None yet — the write-a-file tool stays unavailable until you grant one.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                ForEach(roots, id: \.path) { root in
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder").foregroundStyle(.secondary)
+                        Text(root.path)
+                            .font(.caption.monospaced())
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                        Spacer()
+                        Button {
+                            removeFileAccessRoot(root)
+                        } label: {
+                            Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Revoke access to this folder")
+                    }
+                }
+            }
+            if let fileAccessError {
+                Text(fileAccessError).font(.caption).foregroundStyle(.orange)
+            }
+            Text("Writes are confined to these folders and their subfolders; hidden files and symlinks are refused, and files are never made executable. Every write asks for approval — every time, with the full contents shown. This grants writing only, not reading.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func addFileAccessRoot() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Grant Access"
+        panel.message = "Choose a folder the model may write files into."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            let validated = try FilePathGuard.validateRoot(url)
+            var roots = FileAccessSettings.roots(from: fileAccessRoots)
+            guard !roots.contains(where: { $0.path == validated.path }) else { return }
+            roots.append(validated)
+            fileAccessRoots = FileAccessSettings.encode(roots)
+            fileAccessError = nil
+        } catch {
+            fileAccessError = error.localizedDescription
+        }
+    }
+
+    private func removeFileAccessRoot(_ root: URL) {
+        let remaining = FileAccessSettings.roots(from: fileAccessRoots)
+            .filter { $0.path != root.path }
+        fileAccessRoots = FileAccessSettings.encode(remaining)
+        fileAccessError = nil
+    }
+    #endif
 
     /// Opens an API-format workflow file, auto-binds it to a template, and adds it to the library.
     private func importComfyTemplate() {

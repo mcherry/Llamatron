@@ -2,15 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<!-- Required to reach the Ollama server over the network. -->
-	<key>com.apple.security.network.client</key>
-	<true/>
-	<!-- Required to read files the user attaches and write images they save. -->
-	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
-	<!-- Required to record the microphone for speech-to-text dictation. -->
+	<!--
+	  NOT SANDBOXED, deliberately.
+
+	  The write_file tool needs access to folders the user picks and keeps, which the
+	  sandbox cannot express: it only grants paths selected in a panel, per launch.
+	  This app ships outside the App Store, so containment is enforced in code instead
+	  - see FilePathGuard in LlamaEngine, and FileAccessPolicyTests, which holds it to
+	  that. Removing these keys without reading that guard is not safe.
+
+	  Consequence: Application Support is the shared one, not a container, so the
+	  database lives in its own folder there - see LlamatronApp.storeURL.
+	-->
+
+	<!-- Still required under the Hardened Runtime, which stays on even unsandboxed. -->
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
 </dict>

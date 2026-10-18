@@ -22,7 +22,8 @@ let alwaysRevealControls = true
 
 extension Image {
     /// Cross-platform image initializer so call sites don't branch on `NSImage`/`UIImage`.
-    init(platformImage: PlatformImage) {        #if os(macOS)
+    init(platformImage: PlatformImage) {
+        #if os(macOS)
         self.init(nsImage: platformImage)
         #else
         self.init(uiImage: platformImage)
@@ -115,7 +116,6 @@ struct InfoButton: View {
 }
 
 #if os(iOS)
-import UIKit
 import UniformTypeIdentifiers
 
 /// Presents a share sheet for the given items from the active window — the iOS stand-in

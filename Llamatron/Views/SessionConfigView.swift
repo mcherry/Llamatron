@@ -1,13 +1,7 @@
 import SwiftUI
+import SwiftData
 import LlamaEngineStore
 import LlamaEngine
-
-/// Per-session configuration: which model to use, the context window, and the
-/// system prompt. Models are loaded live from the server (embedding-only models
-/// filtered out) with a refresh button. Edits are written straight onto the
-/// `ChatSession` and affect subsequent requests only.
-import SwiftUI
-import SwiftData
 
 /// Per-session configuration: which model to use, the context window, and the
 /// system prompt. Models are loaded live from the server (embedding-only models
@@ -711,7 +705,7 @@ struct SessionConfigView: View {
         } header: {
             Text("Tools")
         } footer: {
-            Text("Off by default. Each tool is opt-in. A pure tool (like the clock) runs on its own; anything that reads local data or reaches the network asks you to approve first. Tools run on your device, never on the server. You can also toggle these from the wrench button in the chat.")
+            Text("Off by default. Each tool is opt-in. \(ToolsPickerView.approvalSummary) Tools run on your device, never on the server. You can also toggle these from the wrench button in the chat.")
         }
     }
 

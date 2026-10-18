@@ -267,10 +267,11 @@ private struct MermaidWebView: PlatformViewRepresentable {
         private func key(_ source: String, _ dark: Bool) -> String { "\(dark)\n\(source)" }
 
         // Allow only the initial in-memory load; cancel any later navigation (link
-        // clicks, redirects) a malicious diagram might attempt.
+        // clicks, redirects) a malicious diagram might attempt. The handler must match
+        // WebKit's `@MainActor` signature exactly, or WebKit never calls this at all.
         func webView(_ webView: WKWebView,
                      decidePolicyFor navigationAction: WKNavigationAction,
-                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+                     decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
             if didInitialLoad {
                 decisionHandler(.cancel)
             } else {
