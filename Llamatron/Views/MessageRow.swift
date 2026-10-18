@@ -171,17 +171,21 @@ struct MessageRow: View {
                 }
                 if isHoldingForNarration {
                     narrationPlaceholder
-                } else if !displayedContent.isEmpty {
-                    MarkdownView(text: displayedContent, renderDiagrams: !isGenerating)
-                        .textSelection(.enabled)
-                        // Stretchy parts (a quote's bar) would otherwise let the stack shift height to the images below.
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else if isGenerating && message.thinking.isEmpty && message.generatedImageData == nil {
+                } else if displayedContent.isEmpty && isGenerating && message.thinking.isEmpty
+                            && message.generatedImageData == nil {
                     ProgressView()
                         .controlSize(.small)
                 }
-                toolImages
+                ForEach(Array(replySegments.enumerated()), id: \.offset) { _, segment in
+                    if !segment.text.isEmpty {
+                        MarkdownView(text: segment.text, renderDiagrams: !isGenerating)
+                            .textSelection(.enabled)
+                            // Stretchy parts (a quote's bar) would otherwise let the stack shift height to the images below.
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    toolImages(segment.images)
+                }
                 if message.wasTruncated && !isGenerating {
                     truncationNotice
                 }
@@ -286,10 +290,31 @@ struct MessageRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Graphics produced by tools this turn (e.g. render_graphic), shown below the reply.
+    /// The reply cut where tool graphics were made, so each graphic follows the text that led to it.
+    private var replySegments: [(text: String, images: [PlatformImage])] {
+        let text = displayedContent
+        var segments: [(text: String, images: [PlatformImage])] = []
+        var cursor = text.startIndex
+        for record in message.orderedToolCallRecords {
+            guard let image = record.imageData.flatMap({ PlatformImage(data: $0) }) else { continue }
+            // Unknown positions, and those past the text revealed so far, go after the text.
+            let cut = record.contentOffset
+                .flatMap { text.index(text.startIndex, offsetBy: $0, limitedBy: text.endIndex) }
+                .map { max($0, cursor) } ?? text.endIndex
+            if cut == cursor, !segments.isEmpty {
+                segments[segments.count - 1].images.append(image)
+            } else {
+                segments.append((String(text[cursor..<cut]).trimmingCharacters(in: .newlines), [image]))
+                cursor = cut
+            }
+        }
+        segments.append((String(text[cursor...]).trimmingCharacters(in: .newlines), []))
+        return segments
+    }
+
+    /// Graphics produced by tools (e.g. render_graphic).
     @ViewBuilder
-    private var toolImages: some View {
-        let images = message.orderedToolCallRecords.compactMap { $0.imageData.flatMap { PlatformImage(data: $0) } }
+    private func toolImages(_ images: [PlatformImage]) -> some View {
         if !images.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(images.enumerated()), id: \.offset) { _, image in
