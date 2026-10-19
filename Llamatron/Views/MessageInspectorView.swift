@@ -1,6 +1,11 @@
 import SwiftUI
 import LlamaEngineStore
 import LlamaEngine
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// Per-turn inspector: latency/token metrics, the retrieved context chunks with
 /// relevance scores, and the exact request payload that produced the reply.
@@ -319,28 +324,16 @@ struct MessageInspectorView: View {
             Text("The exact request sent for this turn.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            // A two-axis ScrollView centers content that is smaller than the viewport,
-            // which looks awkward for a short payload. Pin the text to the top-leading
-            // by making it fill at least the viewport (GeometryReader supplies the size).
-            GeometryReader { geo in
-                ScrollView([.vertical, .horizontal], showsIndicators: true) {
-                    Text(payload)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .padding(8)
-                        .frame(minWidth: geo.size.width,
-                               minHeight: geo.size.height,
-                               alignment: .topLeading)
-                }
+            PayloadText(text: payload)
                 .background(Color.platformTextBackground,
                             in: RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(Color.platformSeparator))
-            }
-            // The floor matters: this section is fully flexible and a GeometryReader
-            // accepts a zero height silently, so without it a metadata-heavy turn
-            // (tool calls + retrieval) squeezes the payload out of the panel entirely.
-            .frame(maxWidth: .infinity, minHeight: 200, maxHeight: .infinity)
+                // The floor matters: this section is fully flexible and a scroll view
+                // accepts a zero height silently, so without it a metadata-heavy turn
+                // (tool calls + retrieval) squeezes the payload out of the panel entirely.
+                .frame(maxWidth: .infinity, minHeight: 200, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -357,4 +350,47 @@ struct MessageInspectorView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
+
+/// Read-only, selectable monospaced text that scrolls and wraps. A single SwiftUI `Text` this
+/// large draws nothing once it outgrows the GPU's texture limit; TextKit draws only what's visible.
+private struct PayloadText: PlatformViewRepresentable {
+    let text: String
+
+    #if os(macOS)
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        scrollView.drawsBackground = false
+        if let textView = scrollView.documentView as? NSTextView {
+            textView.isEditable = false
+            textView.drawsBackground = false
+            textView.textContainerInset = NSSize(width: 4, height: 8)
+        }
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView, textView.string != text else { return }
+        let font = NSFont.monospacedSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .caption1).pointSize,
+                                               weight: .regular)
+        textView.textStorage?.setAttributedString(
+            NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
+    }
+    #else
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.isEditable = false
+        textView.backgroundColor = .clear
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        guard textView.text != text else { return }
+        let font = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize,
+                                               weight: .regular)
+        textView.attributedText = NSAttributedString(string: text,
+                                                     attributes: [.font: font, .foregroundColor: UIColor.label])
+    }
+    #endif
 }
